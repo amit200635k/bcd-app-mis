@@ -1,0 +1,18 @@
+# BCD Survey Platform — Apache rewrite
+# Route all API requests to the front controller.
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /bcd-app/
+
+    # API — route everything under /api to api/index.php
+    RewriteRule ^api(?:/(.*))?$ api/index.php [L,QSA]
+
+    # MIS portal
+    RewriteRule ^mis/?$ mis/index.php [L,QSA]
+
+    # GIS
+    RewriteRule ^gis/?$ gis/index.php [L,QSA]
+</IfModule>
