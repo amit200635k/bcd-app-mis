@@ -206,6 +206,35 @@ async function misSuite(page) {
     ok('cascade levels persist after reload', cascadePersists);
     await assertNoPhpWarnings(page, 'builder/edit.php');
 
+    step('MIS: Save condition on e2e_location (IF e2e_dropdown = option_a THEN show)');
+    const condSaved = await page.evaluate(() => {
+        if (!state || !state[0]) return false;
+        const loc = state[0].fields.find((f) => f.field_key === 'e2e_location');
+        if (!loc) return false;
+        loc.conditions = [
+            { target_field_key: 'e2e_dropdown', operator: 'equals', condition_value: 'option_a', action: 'show' },
+        ];
+        document.getElementById('structureInput').value = JSON.stringify(state);
+        document.getElementById('builderForm').submit();
+        return true;
+    });
+    ok('condition injected into builder state', condSaved);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Save Structure');
+    ok('condition structure saved without error', await hasText(page, 'Form structure saved.'));
+    const condPersists = await page.evaluate(() => {
+        const target = document.querySelector('[data-cond-target="0:2:0"]');
+        const op = document.querySelector('[data-cond-op="0:2:0"]');
+        const val = document.querySelector('[data-cond-val="0:2:0"]');
+        const act = document.querySelector('[data-cond-action="0:2:0"]');
+        return !!target && target.value === 'e2e_dropdown' &&
+            !!op && op.value === 'equals' &&
+            !!val && val.value === 'option_a' &&
+            !!act && act.value === 'show';
+    });
+    ok('condition editor row persists after reload', condPersists);
+    await assertNoPhpWarnings(page, 'builder/edit.php (condition save)');
+
     step('MIS: Preview draft form (no published version)');
     await clickText(page, 'Back');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
@@ -224,7 +253,12 @@ async function misSuite(page) {
     await waitForText(page, 'E2E District');
     ok('draft preview renders master field', await hasText(page, 'E2E District'));
     ok('draft preview lists district items', await hasText(page, 'Ranchi'));
-    ok('draft preview shows cascade levels', await hasText(page, 'E2E Location') && await hasText(page, 'Panchayat'));
+    const cascadeInDom = await page.evaluate(() => {
+        const w = document.querySelector('[data-field-key="e2e_location"]');
+        const casc = document.querySelector('[data-cascade]');
+        return !!w && !!casc && /Panchayat/.test(casc.textContent);
+    });
+    ok('draft preview has cascade block in DOM (hidden by condition)', cascadeInDom);
     const cascadeRendered = await page.evaluate(() => {
         const cascade = document.querySelector('[data-cascade]');
         if (!cascade) return false;
@@ -233,6 +267,41 @@ async function misSuite(page) {
         return levels.length === 4 && levels.every(l => selects.includes(l));
     });
     ok('cascade renders 4 chained dropdowns', cascadeRendered);
+
+    step('MIS: Draft preview applies conditional logic');
+    const condHiddenInitially = await page.evaluate(() => {
+        const w = document.querySelector('[data-field-key="e2e_location"]');
+        return !!w && w.classList.contains('d-none');
+    });
+    ok('e2e_location hidden until trigger matches', condHiddenInitially);
+    const triggerPicked = await page.evaluate(() => {
+        const sel = document.querySelector('[data-field-key="e2e_dropdown"] select');
+        if (!sel) return false;
+        sel.value = 'option_a';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    });
+    ok('trigger option selected', triggerPicked);
+    await new Promise((r) => setTimeout(r, 200));
+    const condVisibleNow = await page.evaluate(() => {
+        const w = document.querySelector('[data-field-key="e2e_location"]');
+        return !!w && !w.classList.contains('d-none');
+    });
+    ok('e2e_location becomes visible after trigger', condVisibleNow);
+    const condHiddenAgain = await page.evaluate(() => {
+        const sel = document.querySelector('[data-field-key="e2e_dropdown"] select');
+        if (!sel) return false;
+        sel.value = '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    });
+    ok('trigger cleared', condHiddenAgain);
+    await new Promise((r) => setTimeout(r, 200));
+    const condHiddenAfterClear = await page.evaluate(() => {
+        const w = document.querySelector('[data-field-key="e2e_location"]');
+        return !!w && w.classList.contains('d-none');
+    });
+    ok('e2e_location hides again when trigger cleared', condHiddenAfterClear);
     await assertNoPhpWarnings(page, 'builder/preview.php (draft)');
 
     await page.goto(BASE + '/mis/builder/index.php', { waitUntil: 'networkidle0' });

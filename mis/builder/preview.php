@@ -44,7 +44,7 @@ ob_start(); ?>
                     <h6 class="fw-bold text-success text-uppercase small"><?= e($section['title']) ?></h6>
                     <hr class="mt-1">
                     <?php foreach ($section['fields'] as $field): ?>
-                    <div class="mb-3">
+                    <div class="mb-3" data-field-key="<?= e($field['field_key']) ?>">
                         <label class="form-label">
                             <?= e($field['label']) ?>
                             <?php if ($field['is_mandatory']): ?><span class="text-danger">*</span><?php endif; ?>
@@ -101,6 +101,93 @@ ob_start(); ?>
         </div>
     </div>
 </div>
+<script>
+/* Conditional logic engine — IF target = value THEN show/hide/required */
+(function () {
+    const conditions = <?= json_encode(array_reduce($definition['sections'], function (array $carry, array $section): array {
+        foreach ($section['fields'] as $field) {
+            if (!empty($field['conditions'])) {
+                $carry[$field['field_key']] = array_map(static fn (array $c) => [
+                    'target_field_key' => $c['target_field_key'] ?? null,
+                    'operator'         => $c['operator'] ?? 'equals',
+                    'condition_value'  => (string) ($c['condition_value'] ?? ''),
+                    'action'           => $c['action'] ?? 'show',
+                ], $field['conditions']);
+            }
+        }
+        return $carry;
+    }, [])) ?>;
+
+    const originalRequired = {};
+    document.querySelectorAll('[data-field-key]').forEach((w) => {
+        const inp = w.querySelector('input, select, textarea');
+        originalRequired[w.dataset.fieldKey] = inp ? inp.hasAttribute('required') : false;
+    });
+
+    function fieldValue(fieldKey) {
+        const w = document.querySelector(`[data-field-key="${fieldKey}"]`);
+        if (!w) return null;
+        const inp = w.querySelector('input, select, textarea');
+        if (!inp) return null;
+        if (inp.type === 'checkbox') return inp.checked ? 'on' : '';
+        if (inp.type === 'radio') {
+            const checked = w.querySelector(`input[name="${inp.name}"]:checked`);
+            return checked ? checked.value : '';
+        }
+        return inp.value;
+    }
+
+    function matches(op, actual, expected) {
+        switch (op) {
+            case 'equals': return String(actual) === String(expected);
+            case 'not_equals': return String(actual) !== String(expected);
+            case 'in': return String(expected).split(',').map(s => s.trim()).includes(String(actual));
+            case 'not_in': return !String(expected).split(',').map(s => s.trim()).includes(String(actual));
+            case 'greater_than': return parseFloat(actual) > parseFloat(expected);
+            case 'less_than': return parseFloat(actual) < parseFloat(expected);
+            case 'contains': return String(actual).includes(String(expected));
+            default: return true;
+        }
+    }
+
+    function applyConditions() {
+        for (const [fieldKey, conds] of Object.entries(conditions)) {
+            const w = document.querySelector(`[data-field-key="${fieldKey}"]`);
+            if (!w) continue;
+            let visible = true;
+            let condRequired = false;
+            for (const c of conds) {
+                const matched = matches(c.operator, fieldValue(c.target_field_key), c.condition_value);
+                if (c.action === 'show' && !matched) visible = false;
+                if (c.action === 'hide' && matched) visible = false;
+                if (c.action === 'required' && matched) condRequired = true;
+            }
+            w.classList.toggle('d-none', !visible);
+
+            const inp = w.querySelector('input, select, textarea');
+            if (inp) {
+                if (visible && (originalRequired[fieldKey] || condRequired)) inp.setAttribute('required', '');
+                else inp.removeAttribute('required');
+            }
+
+            w.querySelectorAll('.cond-star').forEach((s) => s.remove());
+            if (visible && condRequired && !originalRequired[fieldKey]) {
+                const label = w.querySelector('label');
+                if (label) {
+                    const span = document.createElement('span');
+                    span.className = 'text-danger cond-star';
+                    span.textContent = ' *';
+                    label.appendChild(span);
+                }
+            }
+        }
+    }
+
+    document.querySelectorAll('input, select, textarea').forEach((el) => el.addEventListener('input', applyConditions));
+    document.querySelectorAll('select').forEach((el) => el.addEventListener('change', applyConditions));
+    applyConditions();
+})();
+</script>
 <script>
 (function () {
     const BASE = '<?= e(rtrim((string) config('app.url'), '/')) ?>';

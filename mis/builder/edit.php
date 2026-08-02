@@ -104,6 +104,16 @@ const masterGroups = <?= json_encode($masterGroups) ?>;
 // State: array of sections, each with fields.
 let state = <?= json_encode($definition['sections']) ?>;
 
+// Flat list of every field in the form (for condition targets).
+function allFields() {
+    const out = [];
+    state.forEach((s) => (s.fields || []).forEach((f) => out.push({ key: f.field_key, label: f.label, type: f.type })));
+    return out;
+}
+
+const COND_OPERATORS = ['equals', 'not_equals', 'in', 'not_in', 'greater_than', 'less_than', 'contains'];
+const COND_ACTIONS = ['show', 'hide', 'required'];
+
 function esc(s) {
     const d = document.createElement('div');
     d.textContent = s ?? '';
@@ -190,6 +200,41 @@ function renderField(si, fi, field) {
         </div>`;
     }
 
+    const condOthers = allFields().filter((f) => f.key !== field.field_key);
+    const condRowHtml = (c, ci) => `
+        <div class="row g-2 align-items-center mt-1" data-cond-row>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" data-cond-target="${si}:${fi}:${ci}">
+                    <option value="">— If field —</option>
+                    ${condOthers.map(o => `<option value="${esc(o.key)}" ${c.target_field_key === o.key ? 'selected' : ''}>${esc(o.label)} (${esc(o.key)})</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" data-cond-op="${si}:${fi}:${ci}">
+                    ${COND_OPERATORS.map(op => `<option value="${op}" ${c.operator === op ? 'selected' : ''}>${op.replace(/_/g, ' ')}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input class="form-control form-control-sm" value="${esc(c.condition_value ?? '')}" data-cond-val="${si}:${fi}:${ci}" placeholder="value">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" data-cond-action="${si}:${fi}:${ci}">
+                    ${COND_ACTIONS.map(a => `<option value="${a}" ${c.action === a ? 'selected' : ''}>${a}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-danger w-100" data-cond-del="${si}:${fi}:${ci}"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`;
+    const condHtml = `
+        <div class="row g-2 align-items-center mt-1">
+            <div class="col-md-8">
+                <label class="form-text fw-semibold">Conditions — IF target = value THEN action</label>
+                <div data-conditions="${si}:${fi}">${(field.conditions || []).map(condRowHtml).join('')}</div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-1" data-cond-add="${si}:${fi}"><i class="bi bi-plus-lg me-1"></i>Add Condition</button>
+            </div>
+        </div>`;
+
     div.innerHTML = `
         <div class="row g-2 align-items-center">
             <div class="col-md-4">
@@ -226,7 +271,8 @@ function renderField(si, fi, field) {
         </div>
         ${optsHtml}
         ${masterHtml}
-        ${cascadeHtml}`;
+        ${cascadeHtml}
+        ${condHtml}`;
 
     div.querySelector(`[data-label="${si}:${fi}"]`).addEventListener('change', e => field.label = e.target.value);
     div.querySelector(`[data-key="${si}:${fi}"]`).addEventListener('change', e => field.field_key = e.target.value.replace(/\s+/g, '_'));
@@ -263,6 +309,39 @@ function renderField(si, fi, field) {
                     field.settings = field.settings || {};
                     field.settings.levels = Array.from(box.querySelectorAll('input[data-casc-level]:checked')).map(c => c.dataset.cascLevel);
                 });
+            });
+        }
+    }
+
+    const condBox = div.querySelector(`[data-conditions="${si}:${fi}"]`);
+    if (condBox) {
+        const others = allFields().filter((f) => f.key !== field.field_key);
+        const renderCondRows = () => {
+            field.conditions = field.conditions || [];
+            condBox.innerHTML = field.conditions.map(condRowHtml).join('');
+            condBox.querySelectorAll('[data-cond-target]').forEach((sel, ci) => {
+                sel.addEventListener('change', () => { field.conditions[ci].target_field_key = sel.value; });
+            });
+            condBox.querySelectorAll('[data-cond-op]').forEach((sel, ci) => {
+                sel.addEventListener('change', () => { field.conditions[ci].operator = sel.value; });
+            });
+            condBox.querySelectorAll('[data-cond-val]').forEach((inp, ci) => {
+                inp.addEventListener('change', () => { field.conditions[ci].condition_value = inp.value; });
+            });
+            condBox.querySelectorAll('[data-cond-action]').forEach((sel, ci) => {
+                sel.addEventListener('change', () => { field.conditions[ci].action = sel.value; });
+            });
+            condBox.querySelectorAll('[data-cond-del]').forEach((btn, ci) => {
+                btn.addEventListener('click', () => { field.conditions.splice(ci, 1); renderCondRows(); });
+            });
+        };
+        renderCondRows();
+        const addBtn = div.querySelector(`[data-cond-add="${si}:${fi}"]`);
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                field.conditions = field.conditions || [];
+                field.conditions.push({ target_field_key: others[0] ? others[0].key : '', operator: 'equals', condition_value: '', action: 'show' });
+                renderCondRows();
             });
         }
     }

@@ -221,6 +221,26 @@ final class SurveyService
         foreach ($sections as $i => $section) {
             $sections[$i]['fields'] = $this->fields((int) $section['id']);
         }
+
+        // Resolve each condition's target field to its field_key so the UI and
+        // mobile client can match it against submitted answers.
+        $idToKey = [];
+        foreach ($sections as $section) {
+            foreach ($section['fields'] as $field) {
+                $idToKey[(int) $field['id']] = (string) $field['field_key'];
+            }
+        }
+        foreach ($sections as &$section) {
+            foreach ($section['fields'] as &$field) {
+                foreach ($field['conditions'] as &$cond) {
+                    $cond['target_field_key'] = $idToKey[(int) ($cond['target_field_id'] ?? 0)] ?? null;
+                }
+                unset($cond);
+            }
+            unset($field);
+        }
+        unset($section);
+
         return $sections;
     }
 
@@ -308,6 +328,9 @@ final class SurveyService
                 'INSERT INTO survey_conditions (field_id, target_field_id, operator, condition_value, action, sort_order) VALUES (:f, :t, :op, :cv, :a, :so)'
             );
 
+            $fieldIds = [];       // field_key => field id
+            $pendingConditions = [];
+
             foreach ($sections as $so => $section) {
                 $stmt->execute([
                     'v' => $versionId,
@@ -338,6 +361,7 @@ final class SurveyService
                         'sj' => isset($field['settings']) ? json_encode($field['settings']) : null,
                     ]);
                     $fieldId = (int) $pdo->lastInsertId();
+                    $fieldIds[$key] = $fieldId;
 
                     foreach (($field['options'] ?? []) as $oo => $opt) {
                         // Accept both label/value and option_label/option_value key conventions.
@@ -369,17 +393,31 @@ final class SurveyService
                         ]);
                     }
                     foreach (($field['conditions'] ?? []) as $co => $cond) {
-                        $condStmt->execute([
-                            'f'  => $fieldId,
-                            't'  => $cond['target_field_id'] ?? null,
-                            'op' => $cond['operator'] ?? 'equals',
-                            'cv' => $cond['condition_value'] ?? null,
-                            'a'  => $cond['action'] ?? 'show',
-                            'so' => $co + 1,
-                        ]);
+                        $pendingConditions[] = ['field_id' => $fieldId, 'cond' => $cond, 'sort' => $co + 1];
                     }
                 }
             }
+
+            // Insert conditions last so a condition may reference any field
+            // (including ones defined later) by its field_key.
+            foreach ($pendingConditions as $pc) {
+                $cond = $pc['cond'];
+                $targetId = isset($cond['target_field_id']) && $cond['target_field_id'] !== null
+                    ? (int) $cond['target_field_id']
+                    : ($fieldIds[$cond['target_field_key'] ?? ''] ?? null);
+                if ($targetId === null) {
+                    continue;
+                }
+                $condStmt->execute([
+                    'f'  => $pc['field_id'],
+                    't'  => $targetId,
+                    'op' => $cond['operator'] ?? 'equals',
+                    'cv' => $cond['condition_value'] ?? null,
+                    'a'  => $cond['action'] ?? 'show',
+                    'so' => $pc['sort'],
+                ]);
+            }
+
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();

@@ -8,7 +8,7 @@
 
 Build/continue the **BCD Generic Dynamic Survey Platform** at `C:\xampp\htdocs\bcd-app`, synced to GitHub (`https://github.com/amit200635k/bcd-app-mis`, branch `main`).
 
-Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plus an admin panel, a headed-Chrome E2E harness, master-data field type, dependent location-dropdown (cascade) field type, the "edit published form + sync to all users" flow, the full **Government Building Survey** form (17 sections / 132 fields, published), **RBAC portal + per-user form access** (admin assigns MIS/Admin portal + which surveys a user may fill/view), and the expanded **mobile REST API** (records show/photos, devices, sync status).
+Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plus an admin panel, a headed-Chrome E2E harness, master-data field type, dependent location-dropdown (cascade) field type, **conditional logic (IF/THEN show/hide/required)**, the "edit published form + sync to all users" flow, the full **Government Building Survey** form (17 sections / 132 fields, published), **RBAC portal + per-user form access** (admin assigns MIS/Admin portal + which surveys a user may fill/view), and the expanded **mobile REST API** (records show/photos, devices, sync status).
 
 ## Instructions / Environment
 
@@ -47,6 +47,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - **Location cascade change-handler bug (FIXED):** `mis/builder/preview.php` re-populated the *current* select on change instead of the *next* one — selecting a district never populated blocks. Fix: a `populate(target, level, parentValue, selectedId)` helper driven from the change handler with the *next* select/level.
 - `plain_password` column on `users` is dev-only (null in production), shown as “Password (dev)” in MIS users list, stripped from `user_data.php`.
 - `seed_jharkhand.php` is idempotent (`ON DUPLICATE KEY UPDATE`); child rows re-query parent ids (never rely on `lastInsertId` with upserts).
+- **`hasText()` in E2E uses `document.body.innerText`, which EXCLUDES `display:none` elements** — a field hidden by a conditional engine (`.d-none`) will NOT match `hasText`. Test hidden fields with `page.evaluate(querySelector)` on the DOM instead of `hasText`.
 
 ## Feature Blueprints (current design decisions)
 
@@ -67,6 +68,14 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - Scope-aware: state admin sees all districts and cascades down; district/block-scoped user gets the topmost scoped level pre-selected + locked and the next level auto-populated.
 - `RecordService::normalizeLocation()` stores `value_text = "Ranchi / Kanke / …"` and `value_json = {"district_id":…,"district_name":…,…}`.
 - Mobile client (not in this repo) must call `/v1/location/scope` on form load and `/v1/location/children` on each select change.
+
+### Conditional logic (IF/THEN show/hide/required)
+- `survey_conditions` table: `field_id` = the **controlled** field (FK), `target_field_id` = the **trigger** field (FK), `operator` ENUM(`equals`,`not_equals`,`in`,`not_in`,`greater_than`,`less_than`,`contains`), `condition_value`, `action` ENUM(`show`,`hide`,`required`), `sort_order`. A condition row lives on the *controlled* field and references the *trigger* field.
+- **Builder UI** (`mis/builder/edit.php`): each field gets a "Conditions — IF target = value THEN action" editor. Editor state uses `conditions: [{target_field_key, operator, condition_value, action}]` (key-based, NOT id-based). `allFields()` builds the target dropdown; operators/actions from `COND_OPERATORS`/`COND_ACTIONS`.
+- **Save** (`SurveyService::saveStructure()`): two-pass — sections/fields inserted first building a `fieldIds[field_key]` map, then conditions inserted last (supports **forward references** where a condition targets a field defined later). `target_field_id` is taken verbatim if provided, else resolved from `target_field_key`.
+- **Load** (`SurveyService::sections()`): each condition gets `target_field_key` resolved from `target_field_id` (via field id→key map) so UI/API consumers match against answers.
+- **Preview engine** (`mis/builder/preview.php`): conditions embedded as JSON keyed by controlled `field_key`; `matches()` implements all 7 operators; `applyConditions()` toggles `.d-none` + `required` (and a `.cond-star` for condition-required). Listens on `input` + `change`. Runs on page load, so a hidden field is `display:none` from the start.
+- `RecordService` does not (yet) persist or validate conditional answers — engine is preview/MIS-side only for now.
 
 ### Edit published form + sync to all (web + mobile)
 - **Flow:** published form → admin clicks edit → `SurveyService::draftForEditing()` resumes the existing non-empty draft OR clones the latest published structure into a new draft (so the editor opens a working copy of the live form, never a blank page). Admin edits the draft, then clicks **"Save & Sync to All"**.
@@ -97,17 +106,17 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 
 ## E2E Harness
 
-- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 156 checks, all passing.
+- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 165 checks, all passing.
 - Helpers in `tests/e2e/lib.js` (`BASE`, `CREDS`, `step/check/ok`, `clickText`, `type`, `waitForText`, `hasText`, `assertNoPhpWarnings`, `wirePage`, `summary`); dialogs auto-accepted.
 - `type()` is self-verifying: triple-clicks, types with `delay:10`, reads back the field value and retries up to 3× (headed-Chrome truncates text typed during modal animation/network load).
 - Form submits in tests go through `page.evaluate(form.submit())` (bypasses `onsubmit` confirm dialogs).
 - Puppeteer does NOT support `:has-text()`; use `page.evaluate` + `Array.from(...).find`.
-- E2E MIS suite now covers: create draft → publish → edit published (clone) → Save & Sync → verify pending badge cleared + sync button gone + broadcast flash, **create a user via modal (portal + form access), edit-user access persistence, admin Roles & Access page** (Manage modal shows portals/forms, submits, flash), and **Gov't Building form 40** (editor loads 17 sections / 132 fields, dropdown options render, master groups persist, cascade shows 4 levels; preview renders dropdown/master selects; location cascade chains district→block→panchayat→village).
-- `tests/smoke.php` covers `draftForEditing` clone/resume, `versionInfo` pending states, sync publish bump, live definition containing the synced field, broadcast recipient count, **GOVT_BUILDING_SURVEY integrity (17 sections / 132 fields / master groups), portal + form-access helpers, state-admin implicit access, scope enforcement, block-admin role-assignment limits, assignableForms scoping**. (Note: notification "send/deliver" check asserts id presence in `forUser()` list, not index 0 — same-second ordering is nondeterministic.)
+- E2E MIS suite now covers: create draft → publish → edit published (clone) → Save & Sync → verify pending badge cleared + sync button gone + broadcast flash, **create a user via modal (portal + form access), edit-user access persistence, admin Roles & Access page** (Manage modal shows portals/forms, submits, flash), **Gov't Building form 40** (editor loads 17 sections / 132 fields, dropdown options render, master groups persist, cascade shows 4 levels; preview renders dropdown/master selects; location cascade chains district→block→panchayat→village), and **conditional logic** (save a condition on `e2e_location` referencing `e2e_dropdown`, condition editor row persists after reload, draft preview hides `e2e_location` until trigger `option_a` selected, shows on match, hides again on clear).
+- `tests/smoke.php` covers `draftForEditing` clone/resume, `versionInfo` pending states, sync publish bump, live definition containing the synced field, broadcast recipient count, **conditional-logic round-trip** (condition saved by `target_field_key` resolves on load; a **forward-referenced** condition — targeting a field defined later — persists with a valid FK; values round-trip intact), **GOVT_BUILDING_SURVEY integrity (17 sections / 132 fields / master groups), portal + form-access helpers, state-admin implicit access, scope enforcement, block-admin role-assignment limits, assignableForms scoping**. (Note: notification "send/deliver" check asserts id presence in `forUser()` list, not index 0 — same-second ordering is nondeterministic.)
 
 ## Milestones (git history)
 
-- (this session) `abeecd0` — mobile API records/devices/sync endpoints; `9641666` — Government Building Survey form + RBAC portal/form access; `?` — fix location cascade chain in builder preview + Gov't Building E2E tests.
+- (this session) `?` — **conditional logic engine (IF/THEN show/hide/required)**: builder condition editor, two-pass save with `target_field_key`/forward refs, preview engine + E2E/smoke tests (165 checks); `abeecd0` — mobile API records/devices/sync endpoints; `9641666` — Government Building Survey form + RBAC portal/form access; `4efc019` — fix location cascade chain in builder preview + Gov't Building E2E tests.
 - `1c55442` — edit published form + sync to all users (builder sync flow + E2E).
 - `06b5a1c` — location_cascade field type + `/v1/location/*` API + scope-aware preview + `Request::header()` fix. (previous)
 - `7641300` — master-data field type (admin CRUD, builder linkage, id+name storage) + draft-form preview.
@@ -122,6 +131,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - Mobile app itself is NOT in this repo — only the backend/API it consumes. The sync notification is broadcast via `NotificationService`; the mobile client must implement a "check for new form version" flow triggered by it (API `/v1/forms` download already exists).
 - `SurveyService::publishedForms()` still returns full definitions for ALL published forms at the service level — API filtering is handled per-user, but `mis/builder/index.php`/reports may still show all forms to scoped users (out of scope unless asked).
 - `user_form_access.can_fill` / `can_view` columns exist but are not yet distinguished on the mobile side.
+- Conditional logic is MIS preview-side only for now: `RecordService` does not yet **persist condition-evaluated answers** or **validate** them on the API. To complete Phase 3, evaluate conditions server-side when storing records (skip hidden fields, enforce condition-required) and expose `conditions` in `/v1/forms/{id}` so the mobile client can implement the same show/hide/required rules.
 - Mobile sync queue (`sync_queue` table) is not yet populated by `RecordController::store()` — sync status endpoint exists but nothing inserts into the queue yet.
 - Possible future work: `master` + `location_cascade` answer rendering in MIS reports/monitoring tables; cascade auto-population on edit of an existing record; validation of master/cascade answers on the API; field-level permissions; schedule/expiry on published versions.
 
@@ -131,7 +141,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - **Core services:** `common/src/Services/SurveyService.php`, `common/src/Services/RecordService.php`, `common/src/Services/UserService.php` (scope + access)
 - **HTTP/Auth:** `common/src/Http/Request.php` (header fix), `common/src/Http/Router.php`, `common/src/Http/Response.php`, `common/src/Auth/SessionAuth.php`, `common/src/Auth/ApiAuth.php`
 - **API:** `api/index.php`, `api/dropdowns.php`, `api/user_data.php` (portals + form_ids + scope), `api/Controllers/LocationController.php`, `api/Controllers/MasterController.php`, `api/Controllers/FormController.php` (access-filtered), `api/Controllers/RecordController.php` (store/show/photos/syncStatus), `api/Controllers/DeviceController.php`
-- **Builder UI:** `mis/builder/edit.php`, `mis/builder/preview.php`, `mis/builder/index.php`, `mis/builder/sync.php` (publish + notify), `mis/builder/publish.php`
+- **Builder UI:** `mis/builder/edit.php` (condition editor), `mis/builder/preview.php` (conditional engine + cascade), `mis/builder/index.php`, `mis/builder/sync.php` (publish + notify), `mis/builder/publish.php`
 - **Admin panel:** `admin/access.php` (Roles & Access), `admin/masters.php`, `admin/dashboard.php`, `admin/settings.php`, `admin/notifications.php`, `admin/audit.php`, `admin/replication.php`, `admin/health.php`
 - **MIS users:** `mis/users/index.php` (portal + form access modal), `mis/users/save.php` (actor-scoped), `mis/login.php` (portal gate)
 - **Layouts:** `common/views/layout.php` (MIS), `common/views/admin_layout.php` (admin)

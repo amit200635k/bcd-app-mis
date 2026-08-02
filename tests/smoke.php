@@ -74,6 +74,42 @@ $recipientCount = (int) \App\Database\Connection::instance()
     ->fetchColumn();
 check('Sync notification broadcast to all active users', $recipientCount >= 2, "recipients={$recipientCount}");
 
+// 1d. Conditional logic round-trip (target resolved by field_key, incl. forward reference)
+$condFormId = $svc->createForm(1, ['code' => 'SMOKE_COND_' . time(), 'title' => 'Smoke Conditional Form']);
+$condVersionId = $svc->createVersion($condFormId, 1, 'draft');
+$svc->saveStructure($condFormId, $condVersionId, [
+    ['title' => 'C', 'fields' => [
+        ['field_key' => 'trigger', 'label' => 'Trigger', 'type' => 'dropdown',
+         'options' => [['option_label' => 'Yes', 'option_value' => 'yes']]],
+        ['field_key' => 'shown', 'label' => 'Shown Field', 'type' => 'textbox', 'conditions' => [
+            ['target_field_key' => 'trigger', 'operator' => 'equals', 'condition_value' => 'yes', 'action' => 'show'],
+        ]],
+        // forward reference: 'early' condition targets 'later', defined below it
+        ['field_key' => 'early', 'label' => 'Early', 'type' => 'textbox', 'conditions' => [
+            ['target_field_key' => 'later', 'operator' => 'not_equals', 'condition_value' => '', 'action' => 'hide'],
+        ]],
+        ['field_key' => 'later', 'label' => 'Later', 'type' => 'textbox'],
+    ]],
+]);
+$condDef = $svc->formDefinition($condFormId, $condVersionId);
+$condFields = $condDef['sections'][0]['fields'];
+$condByKey = [];
+foreach ($condFields as $cf) {
+    $condByKey[$cf['field_key']] = $cf;
+}
+$shownConds = $condByKey['shown']['conditions'] ?? [];
+$earlyConds = $condByKey['early']['conditions'] ?? [];
+check('Condition target resolved by field_key', count($shownConds) === 1 && ($shownConds[0]['target_field_key'] ?? '') === 'trigger');
+check('Forward-referenced condition resolved', count($earlyConds) === 1 && ($earlyConds[0]['target_field_key'] ?? '') === 'later');
+$condRow = \App\Database\Connection::instance()
+    ->query('SELECT c.target_field_id, f.field_key FROM survey_conditions c JOIN survey_fields f ON f.id = c.target_field_id WHERE c.field_id = ' . (int) $condByKey['early']['id'])
+    ->fetch();
+check('Forward ref persisted as valid FK', $condRow !== false && $condRow['field_key'] === 'later', json_encode($condRow));
+$shownRow = \App\Database\Connection::instance()
+    ->query('SELECT c.target_field_id, c.operator, c.condition_value, c.action FROM survey_conditions c WHERE c.field_id = ' . (int) $condByKey['shown']['id'])
+    ->fetch();
+check('Condition values round-trip intact', $shownRow !== false && $shownRow['operator'] === 'equals' && $shownRow['condition_value'] === 'yes' && $shownRow['action'] === 'show', json_encode($shownRow));
+
 // 2. Record upsert
 $rec = new \App\Services\RecordService();
 $out = $rec->upsert(1, [
