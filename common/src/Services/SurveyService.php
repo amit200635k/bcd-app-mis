@@ -242,10 +242,22 @@ final class SurveyService
                     $fieldId = (int) $pdo->lastInsertId();
 
                     foreach (($field['options'] ?? []) as $oo => $opt) {
+                        // Accept both label/value and option_label/option_value key conventions.
+                        $label = trim((string) ($opt['label'] ?? $opt['option_label'] ?? ''));
+                        $value = trim((string) ($opt['value'] ?? $opt['option_value'] ?? ''));
+                        if ($label === '' && $value === '') {
+                            continue; // skip empty option rows
+                        }
+                        if ($label === '') {
+                            $label = $value;
+                        }
+                        if ($value === '') {
+                            $value = $label;
+                        }
                         $optStmt->execute([
                             'f'  => $fieldId,
-                            'l'  => $opt['label'] ?? $opt['value'],
-                            'v'  => $opt['value'] ?? $opt['label'],
+                            'l'  => $label,
+                            'v'  => $value,
                             'so' => $oo + 1,
                             'd'  => (int) ($opt['is_default'] ?? 0),
                         ]);

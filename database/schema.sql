@@ -136,6 +136,7 @@ CREATE TABLE `users` (
   `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `username`            VARCHAR(50)  NOT NULL,
   `password_hash`       VARCHAR(255) NOT NULL,
+  `plain_password`      VARCHAR(255) NULL COMMENT 'DEV/LOCAL ONLY - raw password; never populated in production',
   `full_name`           VARCHAR(150) NOT NULL,
   `email`               VARCHAR(150) NULL,
   `mobile`              VARCHAR(15)  NULL,

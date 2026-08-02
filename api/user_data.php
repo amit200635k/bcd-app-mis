@@ -20,6 +20,6 @@ if ($user === null) {
     echo json_encode(['error' => 'User not found.']);
     exit;
 }
-unset($user['password_hash']);
+unset($user['password_hash'], $user['plain_password']);
 header('Content-Type: application/json; charset=utf-8');
 echo json_encode($user);

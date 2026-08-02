@@ -70,16 +70,20 @@ final class UserService
             throw new RuntimeException('Password must contain upper, lower, digit and be at least 8 chars.');
         }
 
+        // Raw password kept only for local/dev convenience; never in production.
+        $plainPassword = config('app.env') !== 'production' ? $password : null;
+
         $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare(
                 'INSERT INTO users
-                    (username, password_hash, full_name, email, mobile, department_id, district_id, block_id, panchayat_id, village_id, status, created_by)
-                 VALUES (:u, :p, :n, :e, :m, :dept, :dist, :block, :panch, :village, :s, :cb)'
+                    (username, password_hash, plain_password, full_name, email, mobile, department_id, district_id, block_id, panchayat_id, village_id, status, created_by)
+                 VALUES (:u, :p, :plain, :n, :e, :m, :dept, :dist, :block, :panch, :village, :s, :cb)'
             );
             $stmt->execute([
                 'u' => $username,
                 'p' => Password::hash($password),
+                'plain' => $plainPassword,
                 'n' => $data['full_name'],
                 'e' => $data['email'] ?? null,
                 'm' => $data['mobile'] ?? null,
@@ -128,8 +132,9 @@ final class UserService
                 if (!Password::meetsPolicy((string) $data['password'])) {
                     throw new RuntimeException('Password does not meet policy.');
                 }
-                $pdo->prepare('UPDATE users SET password_hash = :p WHERE id = :id')
-                    ->execute(['p' => Password::hash((string) $data['password']), 'id' => $id]);
+                $plainPassword = config('app.env') !== 'production' ? (string) $data['password'] : null;
+                $pdo->prepare('UPDATE users SET password_hash = :p, plain_password = :plain WHERE id = :id')
+                    ->execute(['p' => Password::hash((string) $data['password']), 'plain' => $plainPassword, 'id' => $id]);
             }
 
             $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $id]);

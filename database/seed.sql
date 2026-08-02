@@ -63,9 +63,9 @@ INSERT INTO `states` (`code`, `name`) VALUES
 
 -- Default admin: username "admin", password "Admin@12345"
 INSERT INTO `users`
-  (`username`, `password_hash`, `full_name`, `email`, `mobile`, `status`)
+  (`username`, `password_hash`, `plain_password`, `full_name`, `email`, `mobile`, `status`)
 VALUES
-  ('admin', '$2y$10$CmPU4TPejPX5v8WUgonxF.rqFtv96VU8A1AWym82fuKlLnChS3mPu', 'State Administrator', 'admin@example.com', '9000000000', 'active');
+  ('admin', '$2y$10$CmPU4TPejPX5v8WUgonxF.rqFtv96VU8A1AWym82fuKlLnChS3mPu', 'Admin@12345', 'State Administrator', 'admin@example.com', '9000000000', 'active');
 
 INSERT INTO `user_roles` (`user_id`, `role_id`)
 SELECT u.`id`, r.`id`

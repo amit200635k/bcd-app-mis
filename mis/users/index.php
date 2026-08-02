@@ -35,15 +35,18 @@ ob_start(); ?>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead>
-                    <tr><th>Name</th><th>Username</th><th>Mobile</th><th>Roles</th><th>Status</th><th>Last Login</th><th class="text-end">Actions</th></tr>
+                    <tr><th>Name</th><th>Username</th><?php if (config('app.env') !== 'production'): ?><th>Password (dev)</th><?php endif; ?><th>Mobile</th><th>Roles</th><th>Status</th><th>Last Login</th><th class="text-end">Actions</th></tr>
                 </thead>
                 <tbody>
                 <?php if ($result['users'] === []): ?>
-                    <tr><td colspan="7" class="text-center text-muted py-4">No users found.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">No users found.</td></tr>
                 <?php else: foreach ($result['users'] as $u): ?>
                     <tr>
                         <td class="fw-semibold"><?= e($u['full_name']) ?></td>
                         <td><code><?= e($u['username']) ?></code></td>
+                        <?php if (config('app.env') !== 'production'): ?>
+                        <td><code class="text-success small"><?= e((string) ($u['plain_password'] ?? '—')) ?></code></td>
+                        <?php endif; ?>
                         <td><?= e((string) ($u['mobile'] ?? '—')) ?></td>
                         <td>
                             <?php foreach (array_filter(explode(',', (string) $u['roles'])) as $r): ?>
@@ -173,7 +176,6 @@ async function loadLocations() {
 async function openModal(id) {
     document.getElementById('userModalTitle').textContent = id ? 'Edit User' : 'New User';
     document.getElementById('pwField').classList.toggle('d-none', !!id);
-    await loadLocations();
     if (id) {
         const res = await fetch(`../../api/user_data.php?id=${id}`);
         const u = await res.json();
@@ -185,6 +187,7 @@ async function openModal(id) {
         document.getElementById('f_status').value = u.status;
         const roles = (u.role_ids || '').split(',').map(Number).filter(Boolean);
         Array.from(document.getElementById('f_roles').options).forEach(o => o.selected = roles.includes(Number(o.value)));
+        await loadLocations();
         if (u.district_id) {
             document.getElementById('f_district').value = u.district_id;
             document.getElementById('f_district').onchange();
@@ -195,6 +198,7 @@ async function openModal(id) {
         document.getElementById('f_status').value = 'active';
         Array.from(document.getElementById('f_roles').options).forEach(o => o.selected = false);
         document.getElementById('f_password').value = '';
+        await loadLocations();
     }
 }
 </script>

@@ -39,6 +39,35 @@ try {
     );
     $pdo->exec("DELETE FROM notifications WHERE title LIKE 'E2E-%'");
 
+    // Smoke-test artifacts (tests/smoke.php) — purge so they don't drift the demo counts.
+    $pdo->exec(
+        "DELETE FROM survey_records WHERE form_id IN (SELECT id FROM survey_forms WHERE code LIKE 'SMOKE_%')"
+    );
+    $pdo->exec(
+        "DELETE FROM survey_versions WHERE form_id IN (SELECT id FROM survey_forms WHERE code LIKE 'SMOKE_%')"
+    );
+    $pdo->exec("DELETE FROM survey_forms WHERE code LIKE 'SMOKE_%'");
+
+    $pdo->exec(
+        "DELETE FROM notification_recipients WHERE notification_id IN (SELECT id FROM notifications WHERE title = 'Smoke')"
+    );
+    $pdo->exec("DELETE FROM notifications WHERE title = 'Smoke'");
+
+    $pdo->exec(
+        "DELETE FROM villages WHERE panchayat_id IN (
+            SELECT id FROM panchayats WHERE block_id IN (
+                SELECT id FROM blocks WHERE district_id = (SELECT id FROM districts WHERE name = 'Test Dist')
+            )
+        )"
+    );
+    $pdo->exec(
+        "DELETE FROM panchayats WHERE block_id IN (
+            SELECT id FROM blocks WHERE district_id = (SELECT id FROM districts WHERE name = 'Test Dist')
+        )"
+    );
+    $pdo->exec("DELETE FROM blocks WHERE district_id = (SELECT id FROM districts WHERE name = 'Test Dist')");
+    $pdo->exec("DELETE FROM districts WHERE name = 'Test Dist'");
+
     $pdo->commit();
     echo "Demo state reset." . PHP_EOL;
 } catch (Throwable $e) {

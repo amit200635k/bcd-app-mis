@@ -116,6 +116,38 @@ async function misSuite(page) {
     await waitForText(page, 'Save Structure');
     ok('draft editor loads', await hasText(page, 'Save Structure'));
     await assertNoPhpWarnings(page, 'builder/edit.php');
+
+    step('MIS: Save dropdown field with options in builder');
+    const structSaved = await page.evaluate(() => {
+        if (!state) return false;
+        if (!state[0]) {
+            state.push({ title: 'Section 1', description: '', fields: [] });
+        }
+        state[0].fields.push({
+            field_key: 'e2e_dropdown',
+            label: 'E2E Dropdown',
+            type: 'dropdown',
+            mandatory: 0,
+            options: [{ option_label: 'Option A', option_value: 'option_a' }],
+            validations: [],
+            conditions: [],
+        });
+        document.getElementById('structureInput').value = JSON.stringify(state);
+        document.getElementById('builderForm').submit();
+        return true;
+    });
+    ok('builder state injected', structSaved);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Save Structure');
+    ok('structure saved without error', await hasText(page, 'Form structure saved.'));
+    const persists = await page.evaluate(() => {
+        const label = document.querySelector('[data-label="0:0"]');
+        const opts = document.querySelector('[data-options="0:0"]');
+        return !!label && label.value === 'E2E Dropdown' && !!opts && /Option A/.test(opts.value);
+    });
+    ok('dropdown field persists after reload', persists);
+    await assertNoPhpWarnings(page, 'builder/edit.php');
+
     await clickText(page, 'Back');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
     ok('draft form appears in list', await hasText(page, code));

@@ -40,8 +40,8 @@ try {
     ];
 
     $userInsert = $pdo->prepare(
-        'INSERT INTO users (username, password_hash, full_name, mobile, district_id, block_id, status)
-         VALUES (:u, :p, :n, :m, :d, :b, "active")'
+        'INSERT INTO users (username, password_hash, plain_password, full_name, mobile, district_id, block_id, status)
+         VALUES (:u, :p, :plain, :n, :m, :d, :b, "active")'
     );
     $roleAssign = $pdo->prepare('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (:u, :r)');
     $userIds = [];
@@ -50,6 +50,7 @@ try {
         $userInsert->execute([
             'u' => $username,
             'p' => Password::hash('Demo@123'),
+            'plain' => config('app.env') !== 'production' ? 'Demo@123' : null,
             'n' => $name,
             'm' => $mobile,
             'd' => $dist,
