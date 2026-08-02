@@ -1,0 +1,55 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Config that may contain credentials
+/config/*.php
+!/config/*.example.php
+/config/*.local.php
+
+# Uploads & user data
+/uploads/*
+!/uploads/.gitkeep
+
+# Logs
+/logs/*
+!/logs/.gitkeep
+
+# Database artifacts
+*.sqlite
+*.sqlite3
+*.db
+
+# React Native / Mobile
+mobile/android/build/
+mobile/android/.gradle/
+mobile/ios/build/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+
+# Build outputs
+/dist/
+/build/
+*.map
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.code-workspace
+
+# PHP / Composer
+composer.phar
+*.log
+
+# Temporary
+tmp/
+*.tmp
