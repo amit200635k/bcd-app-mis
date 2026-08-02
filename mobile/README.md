@@ -7,8 +7,13 @@ This is the first mobile milestone (core offline loop). Camera, signature, file 
 ## Prerequisites
 
 - Node 18+ and npm.
-- Android toolchain (JDK 21, Android SDK). Follow the [React Native environment setup](https://reactnative.dev/docs/set-up-your-environment) guide.
+- Android toolchain (JDK 17+, Android SDK with **API 37 platform only** — build tools 37.0.0, AGP 9.2, Gradle 9.4.1). Follow the [React Native environment setup](https://reactnative.dev/docs/set-up-your-environment) guide.
 - The backend running at `http://localhost:81/bcd-app` (XAMPP, port 81). The app talks to the API under `/bcd-app/api/v1`.
+
+## Toolchain
+
+- React Native **0.87.0-rc.3** (first RN line whose Gradle plugin works with AGP 9). Its template ships `compileSdk 37` / `targetSdk 36` / build tools 37.0.0, AGP **9.2.1** (pinned by the RN Gradle plugin), Gradle wrapper **9.4.1**, and sets `android.builtInKotlin=false` + `android.newDsl=false` in `gradle.properties`.
+- Only the API 37 platform and 37.0.0 build-tools are installed on this machine; the Gradle home keeps only the 9.4.1 wrapper distribution.
 
 ## Running
 
@@ -45,4 +50,5 @@ Use any portal user created by `database/seed_demo.php` (e.g. `admin` / `admin12
 ```sh
 npx tsc --noEmit   # typecheck
 npm run lint       # eslint
+npm test           # jest (native modules are mocked in jest.setup.js)
 ```

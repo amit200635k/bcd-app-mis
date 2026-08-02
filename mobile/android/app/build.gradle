@@ -96,17 +96,13 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
-            // Dev backend is plain HTTP (http://10.0.2.2:81/bcd-app).
-            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            // Production traffic must be HTTPS; block cleartext.
-            manifestPlaceholders = [usesCleartextTraffic: "false"]
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 }
