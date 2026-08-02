@@ -33,7 +33,7 @@ $page = $page ?? '';
 <div class="sidebar p-3">
     <div class="brand mb-4"><i class="bi bi-clipboard-data me-2"></i>BCD Survey</div>
     <nav class="nav flex-column gap-1">
-        <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= url('mis/dashboard.php') ?>"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+        <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= url($user->homeUrl()) ?>"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <?php if ($user->hasPermission('survey_builder.view')): ?>
         <a class="nav-link <?= $page === 'builder' ? 'active' : '' ?>" href="<?= url('mis/builder/index.php') ?>"><i class="bi bi-ui-checks me-2"></i>Survey Builder</a>
         <?php endif; ?>

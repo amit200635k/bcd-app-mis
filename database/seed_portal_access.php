@@ -18,7 +18,7 @@ $pdo = Connection::instance();
 $stmt = $pdo->prepare('INSERT IGNORE INTO user_portal_access (user_id, portal, granted_by) VALUES (:u, :p, 1)');
 
 $users = $pdo->query(
-    "SELECT id, username FROM users WHERE username IN ('admin','dh_surveyor','rk_surveyor','jb_block','sk_district')"
+    "SELECT id, username FROM users WHERE username IN ('admin','dh_surveyor','rk_surveyor','jb_block','sk_district','pm_panchayat','vp_village')"
 )->fetchAll();
 
 $count = 0;

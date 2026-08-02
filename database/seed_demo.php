@@ -33,21 +33,27 @@ try {
     $village = $pdo->query('SELECT id FROM villages WHERE panchayat_id = ' . (int) $panch . ' LIMIT 1')->fetchColumn();
 
     $users = [
-        ['dh_surveyor',  'Deepak Hans',   '9000000001', 'district', $ranchi],
-        ['rk_surveyor',  'Ravi Kumar',    '9000000002', 'surveyor',  $ranchi],
-        ['jb_block',     'Jyoti Bharti',  '9000000003', 'block',     $ranchi],
-        ['sk_district',  'Suresh Kachhap','9000000004', 'district',  $ranchi],
+        ['dh_surveyor',  'Deepak Hans',   '9000000001', 'district',  $ranchi, null,     null,     null],
+        ['rk_surveyor',  'Ravi Kumar',    '9000000002', 'surveyor',  $ranchi, $block,   $panch,   $village],
+        ['jb_block',     'Jyoti Bharti',  '9000000003', 'block',     $ranchi, $block,   null,     null],
+        ['sk_district',  'Suresh Kachhap','9000000004', 'district',  $ranchi, null,     null,     null],
+        ['pm_panchayat', 'Pankaj Munda',  '9000000005', 'panchayat', $ranchi, $block,   $panch,   null],
+        ['vp_village',   'Vikram Purty',  '9000000006', 'village',   $ranchi, $block,   $panch,   $village],
     ];
 
     $userInsert = $pdo->prepare(
-        'INSERT INTO users (username, password_hash, plain_password, full_name, mobile, district_id, block_id, status)
-         VALUES (:u, :p, :plain, :n, :m, :d, :b, "active")'
+        'INSERT INTO users (username, password_hash, plain_password, full_name, mobile, district_id, block_id, panchayat_id, village_id, status)
+         VALUES (:u, :p, :plain, :n, :m, :d, :b, :panch, :vill, "active")
+         ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), mobile = VALUES(mobile),
+            district_id = VALUES(district_id), block_id = VALUES(block_id),
+            panchayat_id = VALUES(panchayat_id), village_id = VALUES(village_id), deleted_at = NULL'
     );
+    $getId = $pdo->prepare('SELECT id FROM users WHERE username = :u LIMIT 1');
     $roleAssign = $pdo->prepare('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (:u, :r)');
     $portalGrant = $pdo->prepare('INSERT IGNORE INTO user_portal_access (user_id, portal, granted_by) VALUES (:u, "mis", 1)');
     $userIds = [];
 
-    foreach ($users as [$username, $name, $mobile, $role, $dist]) {
+    foreach ($users as [$username, $name, $mobile, $role, $dist, $blk, $panch, $vill]) {
         $userInsert->execute([
             'u' => $username,
             'p' => Password::hash('Demo@123'),
@@ -55,9 +61,12 @@ try {
             'n' => $name,
             'm' => $mobile,
             'd' => $dist,
-            'b' => in_array($role, ['surveyor', 'block'], true) ? $block : null,
+            'b' => $blk,
+            'panch' => $panch,
+            'vill' => $vill,
         ]);
-        $uid = (int) $pdo->lastInsertId();
+        $getId->execute(['u' => $username]);
+        $uid = (int) $getId->fetchColumn();
         $userIds[$username] = $uid;
         $roleAssign->execute(['u' => $uid, 'r' => $roleIds[$role]]);
         if ($role === 'surveyor') {

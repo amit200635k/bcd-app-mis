@@ -356,4 +356,52 @@ if ($f40 > 0) {
     }
 }
 
+// 16. Role-specific dashboards (demo users by username).
+$roleSvc = new \App\Services\RoleDashboardService();
+$demoRoles = [
+    'dh_surveyor'  => 'district',
+    'jb_block'     => 'block',
+    'pm_panchayat' => 'panchayat',
+    'vp_village'   => 'village',
+    'rk_surveyor'  => 'surveyor',
+];
+$homeByRole = [
+    'district' => 'mis/home_district.php', 'block' => 'mis/home_block.php',
+    'panchayat' => 'mis/home_panchayat.php', 'village' => 'mis/home_village.php',
+    'surveyor' => 'mis/home_surveyor.php',
+];
+foreach ($demoRoles as $uname => $expectRole) {
+    $du = User::findByUsername($uname);
+    if ($du === null) {
+        check("Role dashboard user {$uname} seeded", false);
+        continue;
+    }
+    check("Role dashboard routes {$uname} to {$expectRole}", $roleSvc->roleOf($du) === $expectRole, $uname . '=' . $roleSvc->roleOf($du));
+    check("Role dashboard homeUrl for {$uname}", $du->homeUrl() === $homeByRole[$expectRole], $du->homeUrl());
+}
+$dhStats = $roleSvc->stats(User::findByUsername('dh_surveyor'));
+check('District dashboard unit = Ranchi', ($dhStats['unit'] ?? '') === 'Ranchi' && ($dhStats['unit_type'] ?? '') === 'district', json_encode($dhStats['unit']));
+check('District dashboard has sub-units', count($dhStats['children'] ?? []) >= 3 && ($dhStats['children'][0]['count'] ?? 0) > 0, json_encode($dhStats['children']));
+check('District dashboard user + surveyor counts', ($dhStats['users']['total'] ?? 0) >= 5 && ($dhStats['users']['surveyors'] ?? 0) >= 1, json_encode($dhStats['users']));
+
+$blockStats = $roleSvc->stats(User::findByUsername('jb_block'));
+$subTypes = array_column($blockStats['children'] ?? [], 'type');
+check('Block dashboard sub-units are panchayat+village', in_array('panchayat', $subTypes, true) && in_array('village', $subTypes, true), implode(',', $subTypes));
+
+$panchStats = $roleSvc->stats(User::findByUsername('pm_panchayat'));
+check('Panchayat dashboard unit resolved', ($panchStats['unit'] ?? '') !== '' && ($panchStats['unit_type'] ?? '') === 'panchayat', json_encode([$panchStats['unit'], $panchStats['unit_type']]));
+check('Panchayat dashboard lists villages', (($panchStats['children'][0]['type'] ?? '') === 'village') && ($panchStats['children'][0]['count'] ?? 0) > 0, json_encode($panchStats['children']));
+
+$villageStats = $roleSvc->stats(User::findByUsername('vp_village'));
+check('Village dashboard unit resolved', ($villageStats['unit'] ?? '') !== '' && ($villageStats['unit_type'] ?? '') === 'village', json_encode($villageStats['unit']));
+
+$survStats = $roleSvc->stats(User::findByUsername('rk_surveyor'));
+$survId = User::findByUsername('rk_surveyor')->id();
+$ownStmt = \App\Database\Connection::instance()->prepare('SELECT COUNT(*) FROM survey_records WHERE user_id = :id');
+$ownStmt->execute(['id' => $survId]);
+$ownRecords = (int) $ownStmt->fetchColumn();
+check('Surveyor dashboard scopes to own records', ($survStats['records']['total'] ?? 0) === $ownRecords && $ownRecords >= 4, json_encode(['stats' => $survStats['records']['total'], 'own' => $ownRecords]));
+check('Surveyor dashboard exposes accessible forms', ($survStats['forms'] ?? 0) >= 1, 'forms=' . ($survStats['forms'] ?? 0));
+check('Surveyor dashboard has no user aggregation', ($survStats['users']['total'] ?? -1) === 0 && ($survStats['children'] ?? null) === [], json_encode($survStats['users']));
+
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;

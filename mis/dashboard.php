@@ -9,6 +9,10 @@ use App\Auth\SessionAuth;
 SessionAuth::requireAuth();
 
 $user = SessionAuth::user();
+if (!$user->isStateAdmin()) {
+    redirect($user->homeUrl());
+}
+
 $pdo = \App\Database\Connection::instance();
 
 // Dashboard stats scoped to the user's admin boundary.

@@ -6,6 +6,9 @@ const CREDS = {
     admin: { username: 'admin', password: 'Admin@12345' },
     surveyor: { username: 'rk_surveyor', password: 'Demo@123' },
     district: { username: 'sk_district', password: 'Demo@123' },
+    block: { username: 'jb_block', password: 'Demo@123' },
+    panchayat: { username: 'pm_panchayat', password: 'Demo@123' },
+    village: { username: 'vp_village', password: 'Demo@123' },
 };
 
 const results = [];

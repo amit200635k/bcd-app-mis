@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $loggedIn = SessionAuth::user();
         if ($loggedIn !== null && $loggedIn->hasPortal('mis')) {
             flash('success', 'Welcome back!');
-            redirect('mis/dashboard.php');
+            redirect($loggedIn->homeUrl());
         }
         SessionAuth::logout();
         $error = 'You do not have access to the MIS portal.';

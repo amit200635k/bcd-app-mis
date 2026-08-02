@@ -174,6 +174,23 @@ final class User
         return $this->hasRole('state_admin');
     }
 
+    /** Landing page for this user's role (login redirect + sidebar home). */
+    public function homeUrl(): string
+    {
+        if ($this->isStateAdmin()) {
+            return 'mis/dashboard.php';
+        }
+        foreach (['district' => 'home_district', 'block' => 'home_block', 'panchayat' => 'home_panchayat', 'village' => 'home_village'] as $role => $page) {
+            if ($this->hasRole($role)) {
+                return 'mis/' . $page . '.php';
+            }
+        }
+        if ($this->hasRole('surveyor')) {
+            return 'mis/home_surveyor.php';
+        }
+        return 'mis/dashboard.php';
+    }
+
     /** Scope hierarchy: lowest admin unit this user belongs to (district_id, block_id, etc.). */
     public function scope(): array
     {

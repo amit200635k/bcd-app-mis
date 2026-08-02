@@ -669,6 +669,58 @@ async function misSuite(page) {
     ok('logged out back to login', await hasText(page, 'Sign In'));
 }
 
+/* ====================== ROLE DASHBOARD SUITE ====================== */
+async function roleDashboardSuite(page) {
+    const cases = [
+        { cred: 'district', urlPart: 'home_district.php', unit: 'Ranchi' },
+        { cred: 'block', urlPart: 'home_block.php', unit: 'Ranchi' },
+        { cred: 'panchayat', urlPart: 'home_panchayat.php', unit: 'Ranchi Gram Panchayat' },
+        { cred: 'village', urlPart: 'home_village.php', unit: 'Ranchi Tola 1' },
+        { cred: 'surveyor', urlPart: 'home_surveyor.php', unit: '' },
+    ];
+    for (const c of cases) {
+        step(`ROLE DASHBOARD: ${c.cred} lands on ${c.urlPart}`);
+        await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
+        await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
+        await waitForText(page, 'BCD Survey Platform');
+        const cred = require('./lib.js').CREDS[c.cred];
+        await type(page, 'input[name=username]', cred.username);
+        await type(page, 'input[name=password]', cred.password);
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle0' }),
+            page.click('button[type=submit]'),
+        ]);
+        ok(`${c.cred} redirects to ${c.urlPart}`, new RegExp(c.urlPart).test(page.url()), page.url());
+        await waitForText(page, 'Quick Actions');
+        if (c.unit) {
+            ok(`${c.cred} shows its unit`, await hasText(page, c.unit));
+        }
+        ok(`${c.cred} sidebar Dashboard points home`, await hasText(page, 'Dashboard'));
+        await assertNoPhpWarnings(page, `${c.urlPart} (${c.cred})`);
+    }
+
+    step('ROLE DASHBOARD: wrong-role page redirects away');
+    await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
+    await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'BCD Survey Platform');
+    const vp = require('./lib.js').CREDS.village;
+    await type(page, 'input[name=username]', vp.username);
+    await type(page, 'input[name=password]', vp.password);
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle0' }),
+        page.click('button[type=submit]'),
+    ]);
+    await page.goto(BASE + '/mis/home_district.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Quick Actions');
+    ok('village redirected off district page', /home_village\.php/.test(page.url()), page.url());
+
+    step('ROLE DASHBOARD: logout');
+    await clickText(page, 'Logout');
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'BCD Survey Platform');
+    ok('role dashboard logged out', await hasText(page, 'Sign In'));
+}
+
 /* ============================== ADMIN SUITE ============================== */
 async function adminSuite(page) {
     step('ADMIN: Login');
@@ -900,6 +952,9 @@ async function adminSuite(page) {
     try {
         if (only === 'mis' || only === 'all') {
             await misSuite(page);
+        }
+        if (only === 'roles' || only === 'all') {
+            await roleDashboardSuite(page);
         }
         if (only === 'admin' || only === 'all') {
             await adminSuite(page);
