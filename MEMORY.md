@@ -116,7 +116,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 
 ## Milestones (git history)
 
-- (this session) `?` — **conditional logic engine (IF/THEN show/hide/required)**: builder condition editor, two-pass save with `target_field_key`/forward refs, preview engine + E2E/smoke tests (165 checks); `abeecd0` — mobile API records/devices/sync endpoints; `9641666` — Government Building Survey form + RBAC portal/form access; `4efc019` — fix location cascade chain in builder preview + Gov't Building E2E tests.
+- (this session) `d3ce96c` — **conditional logic engine (IF/THEN show/hide/required)**: builder condition editor, two-pass save with `target_field_key`/forward refs, preview engine + E2E/smoke tests (165 checks); `abeecd0` — mobile API records/devices/sync endpoints; `9641666` — Government Building Survey form + RBAC portal/form access; `4efc019` — fix location cascade chain in builder preview + Gov't Building E2E tests.
 - `1c55442` — edit published form + sync to all users (builder sync flow + E2E).
 - `06b5a1c` — location_cascade field type + `/v1/location/*` API + scope-aware preview + `Request::header()` fix. (previous)
 - `7641300` — master-data field type (admin CRUD, builder linkage, id+name storage) + draft-form preview.
