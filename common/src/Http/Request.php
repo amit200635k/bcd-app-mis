@@ -59,7 +59,17 @@ final class Request
     public static function header(string $name, ?string $default = null): ?string
     {
         $key = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
-        return $_SERVER[$key] ?? $default;
+        if (isset($_SERVER[$key])) {
+            return $_SERVER[$key];
+        }
+        if (function_exists('getallheaders')) {
+            foreach (getallheaders() as $h => $v) {
+                if (strcasecmp($h, $name) === 0) {
+                    return $v;
+                }
+            }
+        }
+        return $default;
     }
 
     public static function bearerToken(): ?string

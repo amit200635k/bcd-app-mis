@@ -165,6 +165,24 @@ function renderField(si, fi, field) {
         </div>`;
     }
 
+    let cascadeHtml = '';
+    if (field.type === 'location_cascade') {
+        const levels = (field.settings || {}).levels || ['district', 'block', 'panchayat', 'village'];
+        const levelLabels = { district: 'District', block: 'Block', panchayat: 'Panchayat', village: 'Village' };
+        cascadeHtml = `<div class="row g-2 align-items-center mt-1">
+            <div class="col-md-8">
+                <div class="d-flex flex-wrap gap-3" data-cascade="${si}:${fi}">
+                    ${Object.keys(levelLabels).map(l => `
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" data-casc-level="${l}" id="casc_${si}_${fi}_${l}" ${levels.includes(l) ? 'checked' : ''}>
+                            <label class="form-check-label small" for="casc_${si}_${fi}_${l}">${levelLabels[l]}</label>
+                        </div>`).join('')}
+                </div>
+            </div>
+            <div class="col-4 text-muted small">dependent dropdown levels (District → Village)</div>
+        </div>`;
+    }
+
     div.innerHTML = `
         <div class="row g-2 align-items-center">
             <div class="col-md-4">
@@ -200,7 +218,8 @@ function renderField(si, fi, field) {
             </div>
         </div>
         ${optsHtml}
-        ${masterHtml}`;
+        ${masterHtml}
+        ${cascadeHtml}`;
 
     div.querySelector(`[data-label="${si}:${fi}"]`).addEventListener('change', e => field.label = e.target.value);
     div.querySelector(`[data-key="${si}:${fi}"]`).addEventListener('change', e => field.field_key = e.target.value.replace(/\s+/g, '_'));
@@ -226,6 +245,17 @@ function renderField(si, fi, field) {
             msel.addEventListener('change', e => {
                 field.settings = field.settings || {};
                 field.settings.master_group_id = e.target.value ? Number(e.target.value) : null;
+            });
+        }
+    }
+    if (field.type === 'location_cascade') {
+        const box = div.querySelector(`[data-cascade="${si}:${fi}"]`);
+        if (box) {
+            box.querySelectorAll('input[data-casc-level]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    field.settings = field.settings || {};
+                    field.settings.levels = Array.from(box.querySelectorAll('input[data-casc-level]:checked')).map(c => c.dataset.cascLevel);
+                });
             });
         }
     }

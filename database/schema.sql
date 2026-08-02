@@ -294,7 +294,7 @@ CREATE TABLE `survey_fields` (
   `section_id`     INT UNSIGNED NOT NULL,
   `field_key`      VARCHAR(100) NOT NULL,
   `label`          VARCHAR(200) NOT NULL,
-  `type`           ENUM('textbox','textarea','number','decimal','date','time','dropdown','radio','checkbox','multi_select','master','gps','camera','signature','barcode','qr_code','file_upload','heading','auto_number')
+  `type`           ENUM('textbox','textarea','number','decimal','date','time','dropdown','radio','checkbox','multi_select','master','location_cascade','gps','camera','signature','barcode','qr_code','file_upload','heading','auto_number')
                    NOT NULL,
   `is_mandatory`   TINYINT(1)   NOT NULL DEFAULT 0,
   `placeholder`    VARCHAR(255) NULL,

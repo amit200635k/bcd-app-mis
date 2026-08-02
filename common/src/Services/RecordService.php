@@ -100,6 +100,8 @@ final class RecordService
 
             if ($fieldType === 'master') {
                 [$text, $num, $date, $json] = $this->normalizeMaster((array) ($settings ?? []), $value);
+            } elseif ($fieldType === 'location_cascade') {
+                [$text, $num, $date, $json] = $this->normalizeLocation($value);
             } else {
                 [$text, $num, $date, $json] = $this->normalizeValue($fieldType, $value);
             }
@@ -175,6 +177,36 @@ final class RecordService
 
         $json = json_encode(['master_id' => $masterId, 'name' => $name !== '' ? $name : null]);
         return [$name !== '' ? $name : null, null, null, $json];
+    }
+
+    /**
+     * Location cascade answer: persist each selected level as id + name.
+     * @return array{?string, ?string, ?string, ?string} [text="District / Block / ...", null, null, json]
+     */
+    private function normalizeLocation(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [null, null, null, null];
+        }
+
+        $levels = ['district' => 'district_id', 'block' => 'block_id', 'panchayat' => 'panchayat_id', 'village' => 'village_id'];
+        $out = [];
+        $names = [];
+
+        foreach ($levels as $level => $idKey) {
+            $id = (int) ($value[$idKey] ?? $value[$level . '_id'] ?? 0);
+            $name = trim((string) ($value[$level] ?? $value[$level . '_name'] ?? ''));
+            if ($id > 0 || $name !== '') {
+                $out[$level . '_id'] = $id > 0 ? $id : null;
+                $out[$level . '_name'] = $name !== '' ? $name : null;
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+        }
+
+        $text = $names !== [] ? implode(' / ', $names) : null;
+        return [$text, null, null, json_encode($out)];
     }
 
     private function saveGps(int $recordId, int $userId, array $gps): void

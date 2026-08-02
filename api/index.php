@@ -28,6 +28,10 @@ $router->get('/v1/auth/me', \App\Api\Controllers\AuthController::me(...));
 $router->get('/v1/masters/locations', \App\Api\Controllers\MasterController::locations(...));
 $router->get('/v1/masters', \App\Api\Controllers\MasterController::index(...));
 
+// ---------- Location cascade (dependent dropdowns) ----------
+$router->get('/v1/location/children', \App\Api\Controllers\LocationController::children(...));
+$router->get('/v1/location/scope', \App\Api\Controllers\LocationController::scope(...));
+
 // ---------- Survey forms ----------
 $router->get('/v1/forms', \App\Api\Controllers\FormController::index(...));
 $router->get('/v1/forms/{identifier}', \App\Api\Controllers\FormController::show(...));

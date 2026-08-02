@@ -31,11 +31,15 @@ $svc->saveStructure($formId, $versionId, [
     ['title' => 'A', 'fields' => [
         ['field_key' => 'name', 'label' => 'Name', 'type' => 'textbox', 'mandatory' => 1],
         ['field_key' => 'age', 'label' => 'Age', 'type' => 'number'],
+        ['field_key' => 'location', 'label' => 'Location', 'type' => 'location_cascade',
+         'settings' => ['levels' => ['district', 'block', 'panchayat', 'village']]],
     ]],
 ]);
 $svc->publish($formId, 1, 'publish');
 $def = $svc->formDefinition($formId, $versionId);
 check('Form create/version/publish', $def['form']['status'] === 'published', $def['form']['status']);
+$locField = $def['sections'][0]['fields'][2] ?? [];
+check('Cascade field in definition', ($locField['type'] ?? '') === 'location_cascade' && in_array('village', $locField['settings']['levels'] ?? [], true));
 
 // 2. Record upsert
 $rec = new \App\Services\RecordService();
@@ -43,9 +47,15 @@ $out = $rec->upsert(1, [
     'record_uuid' => bin2hex(random_bytes(8)),
     'form_id' => $formId,
     'form_version_id' => $versionId,
-    'answers' => ['name' => 'Test Person', 'age' => 30],
+    'answers' => ['name' => 'Test Person', 'age' => 30,
+        'location' => ['district_id' => 20, 'district_name' => 'Ranchi', 'block_id' => 77, 'block_name' => 'Kanke']],
 ]);
 check('Record upsert', $out['status'] === 'submitted');
+$locAnswer = \App\Database\Connection::instance()
+    ->query('SELECT value_text, value_json FROM survey_answers WHERE record_id = ' . (int) $out['record_id'] . " AND field_key = 'location'")
+    ->fetch();
+$locJson = json_decode((string) ($locAnswer['value_json'] ?? ''), true);
+check('Cascade answer stores id+name', str_contains((string) ($locAnswer['value_text'] ?? ''), 'Ranchi / Kanke') && (int) ($locJson['district_id'] ?? 0) === 20);
 
 // 3. Workflow transition
 $rec->transition($out['record_id'], 1, 'published');

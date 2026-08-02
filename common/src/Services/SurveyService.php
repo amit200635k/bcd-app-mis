@@ -16,7 +16,7 @@ final class SurveyService
     /** @var list<string> */
     public const FIELD_TYPES = [
         'textbox', 'textarea', 'number', 'decimal', 'date', 'time',
-        'dropdown', 'radio', 'checkbox', 'multi_select', 'master', 'gps', 'camera',
+        'dropdown', 'radio', 'checkbox', 'multi_select', 'master', 'location_cascade', 'gps', 'camera',
         'signature', 'barcode', 'qr_code', 'file_upload', 'heading', 'auto_number',
     ];
 

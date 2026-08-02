@@ -31,6 +31,21 @@ switch ($type) {
         $stmt->execute(['b' => $blockId]);
         $items = $stmt->fetchAll();
         break;
+    case 'village':
+        $panchayatId = (int) ($_GET['panchayat_id'] ?? 0);
+        $stmt = $pdo->prepare('SELECT id, name FROM villages WHERE panchayat_id = :p AND is_active = 1 ORDER BY name');
+        $stmt->execute(['p' => $panchayatId]);
+        $items = $stmt->fetchAll();
+        break;
+    case 'scope':
+        $scope = SessionAuth::user()->scope();
+        $items = [
+            'district_id'  => $scope['district_id']  !== null ? (int) $scope['district_id'] : null,
+            'block_id'     => $scope['block_id']     !== null ? (int) $scope['block_id'] : null,
+            'panchayat_id' => $scope['panchayat_id'] !== null ? (int) $scope['panchayat_id'] : null,
+            'village_id'   => $scope['village_id']   !== null ? (int) $scope['village_id'] : null,
+        ];
+        break;
     default:
         $items = [];
 }

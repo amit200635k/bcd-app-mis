@@ -176,6 +176,36 @@ async function misSuite(page) {
     ok('master group selection persists after reload', masterPersists);
     await assertNoPhpWarnings(page, 'builder/edit.php');
 
+    step('MIS: Save location_cascade (dependent dropdowns) field');
+    const cascadeSaved = await page.evaluate(() => {
+        if (!state || !state[0]) return false;
+        state[0].fields.push({
+            field_key: 'e2e_location',
+            label: 'E2E Location',
+            type: 'location_cascade',
+            mandatory: 1,
+            settings: { levels: ['district', 'block', 'panchayat', 'village'] },
+            options: [],
+            validations: [],
+            conditions: [],
+        });
+        document.getElementById('structureInput').value = JSON.stringify(state);
+        document.getElementById('builderForm').submit();
+        return true;
+    });
+    ok('cascade field injected into state', cascadeSaved);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Save Structure');
+    ok('cascade structure saved without error', await hasText(page, 'Form structure saved.'));
+    const cascadePersists = await page.evaluate(() => {
+        const box = document.querySelector('[data-cascade="0:2"]');
+        if (!box) return false;
+        const checked = Array.from(box.querySelectorAll('input[data-casc-level]:checked')).map(c => c.dataset.cascLevel);
+        return checked.length === 4 && checked.includes('district') && checked.includes('village');
+    });
+    ok('cascade levels persist after reload', cascadePersists);
+    await assertNoPhpWarnings(page, 'builder/edit.php');
+
     step('MIS: Preview draft form (no published version)');
     await clickText(page, 'Back');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
@@ -194,6 +224,15 @@ async function misSuite(page) {
     await waitForText(page, 'E2E District');
     ok('draft preview renders master field', await hasText(page, 'E2E District'));
     ok('draft preview lists district items', await hasText(page, 'Ranchi'));
+    ok('draft preview shows cascade levels', await hasText(page, 'E2E Location') && await hasText(page, 'Panchayat'));
+    const cascadeRendered = await page.evaluate(() => {
+        const cascade = document.querySelector('[data-cascade]');
+        if (!cascade) return false;
+        const levels = cascade.dataset.levels.split(',');
+        const selects = Array.from(cascade.querySelectorAll('select')).map(s => s.dataset.level);
+        return levels.length === 4 && levels.every(l => selects.includes(l));
+    });
+    ok('cascade renders 4 chained dropdowns', cascadeRendered);
     await assertNoPhpWarnings(page, 'builder/preview.php (draft)');
 
     await page.goto(BASE + '/mis/builder/index.php', { waitUntil: 'networkidle0' });
