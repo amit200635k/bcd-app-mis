@@ -1,0 +1,48 @@
+# BCD Survey Mobile App
+
+React Native (Android) client for the BCD survey platform. Implements the **offline-first loop**: download forms + masters + locations, fill a dynamic form offline (master / location_cascade / GPS / dropdown / conditional show+required fields), queue the record locally, then auto-upload it when connectivity returns and view the server's `/v1/sync/status`.
+
+This is the first mobile milestone (core offline loop). Camera, signature, file upload, SQLite storage and background workers are deliberately out of scope for now.
+
+## Prerequisites
+
+- Node 18+ and npm.
+- Android toolchain (JDK 21, Android SDK). Follow the [React Native environment setup](https://reactnative.dev/docs/set-up-your-environment) guide.
+- The backend running at `http://localhost:81/bcd-app` (XAMPP, port 81). The app talks to the API under `/bcd-app/api/v1`.
+
+## Running
+
+```sh
+# 1. Install dependencies
+npm install
+
+# 2. Start Metro
+npm start
+
+# 3. In another terminal, build & launch on an Android emulator
+npm run android
+```
+
+The Android emulator reaches your host machine via `10.0.2.2`, so the dev build talks to `http://10.0.2.2:81/bcd-app/api/v1` automatically (`src/config/index.ts`). On a physical device, point the device at your machine's LAN IP by editing `DEV_API_HOST` in `src/config/index.ts`.
+
+Cleartext HTTP is enabled for debug builds only (`android/app/build.gradle` → `manifestPlaceholders.usesCleartextTraffic`); release builds require an HTTPS endpoint — replace the `survey.example.gov.in` placeholder in `src/config/index.ts`.
+
+## Login
+
+Use any portal user created by `database/seed_demo.php` (e.g. `admin` / `admin123`) — the app supports every role. The server issues an access + refresh token pair; tokens and the profile are stored in the device Keychain, and the device registers itself via `POST /v1/devices` on first login.
+
+## Structure
+
+- `src/config/index.ts` — API base URL + sync settings.
+- `src/api/` — `client.ts` (fetch wrapper + single-flight token refresh), `endpoints.ts`, `cache.ts` (AsyncStorage offline store + pending-record queue + device id), `session.ts` (Keychain).
+- `src/context/` — `AuthContext.tsx` (login/logout/bootstrap/device registration), `DataContext.tsx` (offline cache load, refresh, download, queue + auto-upload).
+- `src/screens/` — `LoginScreen`, `HomeScreen` (forms list), `FormFillScreen` (dynamic form + client-side conditions/validation), `SyncScreen` (pending queue + `/v1/sync/status`).
+- `src/components/fields/` — field renderers for text/number/date, radio/checkbox/multi-select, dropdown, master, location cascade, GPS (other field types show a "not available offline yet" note).
+- `src/utils/` — `conditions.ts` (mirrors the server `ConditionEvaluator`), `validators.ts` (mirrors server validation rules).
+
+## Checks
+
+```sh
+npx tsc --noEmit   # typecheck
+npm run lint       # eslint
+```
