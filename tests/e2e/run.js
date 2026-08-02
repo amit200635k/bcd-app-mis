@@ -213,6 +213,7 @@ async function misSuite(page) {
         if (!loc) return false;
         loc.conditions = [
             { target_field_key: 'e2e_dropdown', operator: 'equals', condition_value: 'option_a', action: 'show' },
+            { target_field_key: 'e2e_dropdown', operator: 'equals', condition_value: 'option_a', action: 'required' },
         ];
         document.getElementById('structureInput').value = JSON.stringify(state);
         document.getElementById('builderForm').submit();
@@ -667,6 +668,76 @@ async function misSuite(page) {
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
     await waitForText(page, 'BCD Survey Platform');
     ok('logged out back to login', await hasText(page, 'Sign In'));
+
+    // Runs last so its API-created records (on the E2E_ form) cannot shift the
+    // Monitoring list / record-detail checks above.
+    step('MIS: API store evaluates conditional rules server-side');
+    const condApi = await page.evaluate(async (ctx) => {
+        const { b, c } = ctx;
+        const api = (p) => `${b}/api/v1${p}`;
+
+        const login = await fetch(api('/auth/login'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin', password: 'Admin@12345' }),
+        });
+        const token = (await login.json()).data.access_token;
+
+        // The published conditional form must expose its rules to mobile.
+        const defRes = await fetch(api('/forms/' + encodeURIComponent(c)), {
+            headers: { Authorization: 'Bearer ' + token },
+        });
+        const def = (await defRes.json()).data;
+        const fields = [];
+        (def.sections || []).forEach((s) => (s.fields || []).forEach((f) => fields.push(f)));
+        const loc = fields.find((f) => f.field_key === 'e2e_location');
+        const showCond = loc && loc.conditions && loc.conditions.find((k) => k.action === 'show' && k.target_field_key === 'e2e_dropdown');
+
+        const post = async (answers, suffix) => {
+            const res = await fetch(api('/records'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({
+                    record_uuid: 'e2e-cond-' + Date.now() + '-' + suffix,
+                    form_id: def.form.id,
+                    form_version_id: def.version,
+                    answers,
+                }),
+            });
+            return { status: res.status, json: await res.json() };
+        };
+
+        // Trigger NOT matched → e2e_location hidden → its answer is dropped.
+        const dropped = await post({ e2e_dropdown: '', e2e_location: { district_id: 20, district: 'Ranchi' } }, 'hidden');
+        // Trigger matched → condition-required visible field missing → 422.
+        const rejected = await post({ e2e_dropdown: 'option_a' }, 'rejected');
+        // Trigger matched with a value → stored.
+        const kept = await post({ e2e_dropdown: 'option_a', e2e_location: { district_id: 20, district: 'Ranchi' } }, 'kept');
+
+        let hiddenHasLocation = null;
+        if (dropped.status === 201) {
+            const rec = await (await fetch(api('/records/' + dropped.json.data.record_uuid), {
+                headers: { Authorization: 'Bearer ' + token },
+            })).json();
+            hiddenHasLocation = (rec.data.answers || []).some((a) => a.field_key === 'e2e_location');
+        }
+
+        return {
+            condExposed: !!(loc && showCond && showCond.operator === 'equals' && showCond.condition_value === 'option_a'),
+            droppedStatus: dropped.status,
+            hiddenHasLocation,
+            rejectedStatus: rejected.status,
+            rejectedHasField: !!(rejected.json.errors && rejected.json.errors.e2e_location),
+            rejectedJson: JSON.stringify(rejected.json),
+            keptStatus: kept.status,
+        };
+    }, { b: BASE, c: code });
+
+    ok('form definition exposes conditions for mobile', condApi.condExposed);
+    ok('hidden-field answer dropped via API store (201)', condApi.droppedStatus === 201 && condApi.hiddenHasLocation === false);
+    ok('condition-required enforced via API (422)', condApi.rejectedStatus === 422 && condApi.rejectedHasField === true,
+        `status=${condApi.rejectedStatus} body=${condApi.rejectedJson}`);
+    ok('visible conditional answer stored via API (201)', condApi.keptStatus === 201);
 }
 
 /* ====================== ROLE DASHBOARD SUITE ====================== */

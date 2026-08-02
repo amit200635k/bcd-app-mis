@@ -6,6 +6,7 @@ namespace App\Api\Controllers;
 
 use App\Auth\ApiAuth;
 use App\Database\Connection;
+use App\Exceptions\ValidationException;
 use App\Http\Request;
 use App\Http\Response;
 use App\Services\RecordService;
@@ -51,6 +52,8 @@ final class RecordController
         try {
             $result = self::service()->upsert($user->id(), $data);
             Response::created($result);
+        } catch (ValidationException $e) {
+            Response::validation($e->errors());
         } catch (\Throwable $e) {
             Response::error('Failed to save record: ' . exception_message($e), 500);
         }

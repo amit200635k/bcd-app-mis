@@ -21,10 +21,14 @@ $pdo->beginTransaction();
 try {
     $pdo->exec("UPDATE survey_records SET status = 'submitted' WHERE record_uuid LIKE 'demo-%'");
 
+    // Records first — they FK to survey_versions (RESTRICT), so versions can
+    // only be removed after their records are gone.
+    $pdo->exec(
+        "DELETE FROM survey_records WHERE form_id IN (SELECT id FROM survey_forms WHERE code LIKE 'E2E_%')"
+    );
     $pdo->exec(
         "DELETE FROM survey_versions WHERE form_id IN (SELECT id FROM survey_forms WHERE code LIKE 'E2E_%')"
     );
-    $pdo->exec("DELETE FROM survey_records WHERE form_id IN (SELECT id FROM survey_forms WHERE code LIKE 'E2E_%')");
     $pdo->exec("DELETE FROM survey_forms WHERE code LIKE 'E2E_%'");
 
     $pdo->exec(

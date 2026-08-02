@@ -351,7 +351,7 @@ final class SurveyService
                         'k'  => $key,
                         'l'  => $field['label'] ?? $key,
                         't'  => $type,
-                        'm'  => (int) ($field['mandatory'] ?? 0),
+                        'm'  => (int) ($field['mandatory'] ?? $field['is_mandatory'] ?? 0),
                         'p'  => $field['placeholder'] ?? null,
                         'dv' => $field['default_value'] ?? null,
                         'h'  => $field['help_text'] ?? null,
@@ -399,12 +399,21 @@ final class SurveyService
             }
 
             // Insert conditions last so a condition may reference any field
-            // (including ones defined later) by its field_key.
+            // (including ones defined later) by its field_key. Resolve the
+            // target by field_key against the freshly inserted field ids first
+            // — a re-saved structure round-trips target_field_id values that
+            // refer to the PREVIOUS version's (deleted) fields, so the stable
+            // field_key is the only reliable reference.
             foreach ($pendingConditions as $pc) {
                 $cond = $pc['cond'];
-                $targetId = isset($cond['target_field_id']) && $cond['target_field_id'] !== null
-                    ? (int) $cond['target_field_id']
-                    : ($fieldIds[$cond['target_field_key'] ?? ''] ?? null);
+                $targetKey = (string) ($cond['target_field_key'] ?? '');
+                if ($targetKey !== '' && isset($fieldIds[$targetKey])) {
+                    $targetId = $fieldIds[$targetKey];
+                } elseif (isset($cond['target_field_id']) && $cond['target_field_id'] !== null) {
+                    $targetId = (int) $cond['target_field_id'];
+                } else {
+                    $targetId = null;
+                }
                 if ($targetId === null) {
                     continue;
                 }

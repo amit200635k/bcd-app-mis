@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Database\Connection;
+use App\Exceptions\ValidationException;
 use App\Models\User;
 use RuntimeException;
 
@@ -61,7 +62,15 @@ final class RecordService
                 $pdo->prepare('DELETE FROM survey_answers WHERE record_id = :id')->execute(['id' => $recordId]);
             }
 
-            $this->saveAnswers($recordId, $payload['answers'] ?? []);
+            // Persist condition-evaluated answers for this form version.
+            $answers = $this->applyConditions(
+                (int) $payload['form_id'],
+                (int) $payload['form_version_id'],
+                $payload['answers'] ?? [],
+                $status
+            );
+
+            $this->saveAnswers($recordId, $answers);
             if (isset($payload['gps']) && is_array($payload['gps'])) {
                 $this->saveGps($recordId, $userId, $payload['gps']);
             }
@@ -72,6 +81,47 @@ final class RecordService
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Evaluate the form version's conditional rules against the submitted
+     * answers: drop answers for fields hidden by conditions so persisted data
+     * always reflects the evaluated form, and (for real submissions, not
+     * drafts) reject records missing a visible mandatory / condition-required
+     * value.
+     *
+     * @param array<string, mixed> $answers
+     * @return array<string, mixed>
+     */
+    private function applyConditions(int $formId, int $formVersionId, array $answers, string $status): array
+    {
+        $definition = (new SurveyService())->formDefinition($formId, $formVersionId);
+        if ($definition === null) {
+            return $answers;
+        }
+        $sections = $definition['sections'] ?? [];
+        if ($sections === []) {
+            return $answers;
+        }
+
+        $evaluated = ConditionEvaluator::evaluate($sections, $answers);
+
+        // Skip hidden fields: answers for conditionally-hidden fields are not
+        // persisted (unknown field_keys are kept as-is).
+        $answers = array_filter(
+            $answers,
+            static fn (string $key): bool => !isset($evaluated['visible'][$key]) || $evaluated['visible'][$key],
+            ARRAY_FILTER_USE_KEY
+        );
+
+        if ($status !== 'draft') {
+            $missing = ConditionEvaluator::missingRequired($sections, $answers, $evaluated);
+            if ($missing !== []) {
+                throw new ValidationException($missing);
+            }
+        }
+
+        return $answers;
     }
 
     private function saveAnswers(int $recordId, array $answers): void

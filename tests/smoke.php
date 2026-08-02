@@ -404,4 +404,107 @@ check('Surveyor dashboard scopes to own records', ($survStats['records']['total'
 check('Surveyor dashboard exposes accessible forms', ($survStats['forms'] ?? 0) >= 1, 'forms=' . ($survStats['forms'] ?? 0));
 check('Surveyor dashboard has no user aggregation', ($survStats['users']['total'] ?? -1) === 0 && ($survStats['children'] ?? null) === [], json_encode($survStats['users']));
 
+// 17. Server-side condition evaluation on record store (Phase 3).
+$condFormId = $svc->createForm(1, ['code' => 'SMOKE_COND2_' . time(), 'title' => 'Smoke Condition Store']);
+$condVerId = $svc->createVersion($condFormId, 1, 'draft');
+$svc->saveStructure($condFormId, $condVerId, [
+    ['title' => 'D', 'fields' => [
+        ['field_key' => 'trigger', 'label' => 'Trigger', 'type' => 'dropdown',
+         'options' => [['option_label' => 'Yes', 'option_value' => 'yes'], ['option_label' => 'No', 'option_value' => 'no']]],
+        ['field_key' => 'shown', 'label' => 'Shown', 'type' => 'textbox', 'conditions' => [
+            ['target_field_key' => 'trigger', 'operator' => 'equals', 'condition_value' => 'yes', 'action' => 'show'],
+        ]],
+        ['field_key' => 'condreq', 'label' => 'Cond Req', 'type' => 'textbox', 'conditions' => [
+            ['target_field_key' => 'trigger', 'operator' => 'equals', 'condition_value' => 'yes', 'action' => 'required'],
+        ]],
+        ['field_key' => 'hidden_mand', 'label' => 'Hidden Mandatory', 'type' => 'textbox', 'mandatory' => 1, 'conditions' => [
+            ['target_field_key' => 'trigger', 'operator' => 'equals', 'condition_value' => 'never', 'action' => 'show'],
+        ]],
+    ]],
+]);
+$svc->publish($condFormId, 1, 'publish');
+$condDef2 = $svc->formDefinition($condFormId, $condVerId);
+$condSections2 = $condDef2['sections'];
+$shown2 = null;
+foreach ($condSections2 as $s) {
+    foreach ($s['fields'] as $f) {
+        if ($f['field_key'] === 'shown') {
+            $shown2 = $f;
+        }
+    }
+}
+check('Definition exposes condition target_field_key for API', ($shown2['conditions'][0]['target_field_key'] ?? '') === 'trigger');
+
+$condRec = $recordSvc->upsert(1, [
+    'record_uuid' => 'smoke-cond-' . time(),
+    'form_id' => $condFormId,
+    'form_version_id' => $condVerId,
+    'answers' => [
+        'trigger' => 'yes',
+        'shown' => 'visible value',
+        'condreq' => 'required value',
+        'hidden_mand' => 'stale hidden value',
+    ],
+]);
+$storedStmt = $pdo->prepare('SELECT field_key FROM survey_answers WHERE record_id = :id');
+$storedStmt->execute(['id' => $condRec['record_id']]);
+$storedKeys = array_column($storedStmt->fetchAll(), 'field_key');
+check('Hidden field answer dropped on store', in_array('shown', $storedKeys, true) && !in_array('hidden_mand', $storedKeys, true), implode(',', $storedKeys));
+
+$reqThrew = false;
+try {
+    $recordSvc->upsert(1, [
+        'record_uuid' => 'smoke-cond-req-' . time(),
+        'form_id' => $condFormId,
+        'form_version_id' => $condVerId,
+        'answers' => ['trigger' => 'yes', 'shown' => 'x'],
+    ]);
+} catch (\App\Exceptions\ValidationException $e) {
+    $reqThrew = isset($e->errors()['condreq']);
+}
+check('Condition-required validated on submit (422)', $reqThrew);
+
+$draftRec = $recordSvc->upsert(1, [
+    'record_uuid' => 'smoke-cond-draft-' . time(),
+    'form_id' => $condFormId,
+    'form_version_id' => $condVerId,
+    'status' => 'draft',
+    'answers' => ['trigger' => 'no', 'shown' => 'still dropped', 'hidden_mand' => 'draft hidden'],
+]);
+$draftStmt = $pdo->prepare('SELECT field_key FROM survey_answers WHERE record_id = :id');
+$draftStmt->execute(['id' => $draftRec['record_id']]);
+$draftKeys = array_column($draftStmt->fetchAll(), 'field_key');
+check('Draft skips validation but drops hidden answers', $draftRec['status'] === 'draft' && !in_array('shown', $draftKeys, true) && !in_array('hidden_mand', $draftKeys, true), implode(',', $draftKeys));
+
+// 17b. Conditional structure round-trips through edit + re-publish (stale target ids).
+$tripVer = $svc->draftForEditing($condFormId, 1);
+$tripDef = $svc->formDefinition($condFormId, $tripVer);
+$svc->saveStructure($condFormId, $tripVer, $tripDef['sections']);
+$svc->publish($condFormId, 1, 'round-trip');
+$tripLive = $svc->formDefinition($condFormId);
+$shownTrip = null;
+$hiddenTrip = null;
+foreach ($tripLive['sections'] as $s) {
+    foreach ($s['fields'] as $f) {
+        if ($f['field_key'] === 'shown') {
+            $shownTrip = $f;
+        }
+        if ($f['field_key'] === 'hidden_mand') {
+            $hiddenTrip = $f;
+        }
+    }
+}
+check('Condition target survives edit+re-publish (key resolution)', ($shownTrip['conditions'][0]['target_field_key'] ?? '') === 'trigger' && ($shownTrip['conditions'][0]['target_field_id'] ?? 0) > 0, json_encode($shownTrip['conditions'] ?? []));
+check('Mandatory survives edit+re-publish', (int) ($hiddenTrip['is_mandatory'] ?? 0) === 1, 'mandatory=' . ($hiddenTrip['is_mandatory'] ?? '?'));
+$tripRec = $recordSvc->upsert(1, [
+    'record_uuid' => 'smoke-cond-trip-' . time(),
+    'form_id' => $condFormId,
+    'form_version_id' => $tripLive['version'],
+    'answers' => ['trigger' => 'yes', 'shown' => 'x', 'condreq' => 'y', 'hidden_mand' => 'stale'],
+]);
+$tripStmt = $pdo->prepare('SELECT field_key FROM survey_answers WHERE record_id = :id');
+$tripStmt->execute(['id' => $tripRec['record_id']]);
+$tripKeys = array_column($tripStmt->fetchAll(), 'field_key');
+check('Round-tripped conditions still drop hidden answers', !in_array('hidden_mand', $tripKeys, true) && in_array('condreq', $tripKeys, true), implode(',', $tripKeys));
+
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;
