@@ -48,6 +48,7 @@ $page = $page ?? '';
         <?php endif; ?>
         <?php if ($user->hasPermission('reports.view')): ?>
         <a class="nav-link <?= $page === 'reports' ? 'active' : '' ?>" href="<?= url('mis/reports.php') ?>"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</a>
+        <a class="nav-link <?= $page === 'detail_report' ? 'active' : '' ?>" href="<?= url('mis/detail_report.php') ?>"><i class="bi bi-table me-2"></i>Detailed Report</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('users.manage')): ?>
         <a class="nav-link <?= $page === 'users' ? 'active' : '' ?>" href="<?= url('mis/users/index.php') ?>"><i class="bi bi-people me-2"></i>Users</a>

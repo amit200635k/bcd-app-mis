@@ -533,6 +533,39 @@ async function misSuite(page) {
     await waitForText(page, 'District-wise');
     ok('district-wise table renders', await hasText(page, 'Ranchi'));
 
+    step('MIS: Detailed report (all-column filters)');
+    await page.goto(BASE + '/mis/detail_report.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Detailed Report');
+    await waitForText(page, 'Filter by column values');
+    const kpiLower = await page.evaluate(() => document.body.innerText.toLowerCase());
+    ok('detail report shows KPI cards', kpiLower.includes('total buildings') && kpiLower.includes('total rooms') && kpiLower.includes('departments'));
+    ok('detail report shows column filter panel', await hasText(page, 'Filter by column values'));
+    ok('category exact filter present', await page.$('select[name=building_category]') !== null);
+    ok('built-up range filter present', await page.$('input[name=built_up_area_min]') !== null && await page.$('input[name=built_up_area_max]') !== null);
+    ok('building-name text filter present', await page.$('input[name=building_name]') !== null);
+    await assertNoPhpWarnings(page, 'detail_report.php (default)');
+
+    step('MIS: Detail report filters narrow results');
+    const catOpts = await page.evaluate(() =>
+        Array.from(document.querySelector('select[name=building_category]').options)
+            .map((o) => o.value).filter((v) => v !== '')
+    );
+    ok('category filter has options', catOpts.length > 0, `options=${catOpts.length}`);
+    if (catOpts.length > 0) {
+        await page.select('select[name=building_category]', catOpts[0]);
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle0' }),
+            page.click('button.btn-primary'),
+        ]);
+        await waitForText(page, 'Detailed Report');
+        const stillSelected = await page.evaluate((v) =>
+            Array.from(document.querySelectorAll('select[name=building_category] option')).some((o) => o.selected && o.value === v),
+            catOpts[0]
+        );
+        ok('category filter applied + remembered', stillSelected);
+        await assertNoPhpWarnings(page, 'detail_report.php (filtered)');
+    }
+
     step('MIS: User management');
     await clickText(page, 'Users');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });

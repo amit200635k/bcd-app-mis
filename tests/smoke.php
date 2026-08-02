@@ -290,4 +290,70 @@ $adminTotal = $smokeRow($adminReport);
 $blockTotal = $smokeRow($blockReport);
 check('Reports scoped to viewer hierarchy', $adminTotal >= 2 && $blockTotal === 0, "admin={$adminTotal} block={$blockTotal}");
 
+// 15. Detailed, filterable report (pivoted answers) + KPIs.
+$locRec = $recordSvc->upsert($admin->id(), [
+    'record_uuid' => 'smoke-detail-' . time(),
+    'form_id' => $formId,
+    'form_version_id' => $versionId,
+    'answers' => [
+        'name' => 'Detail Report Test', 'age' => 30,
+        'location' => ['district_id' => 20, 'district' => 'Ranchi', 'block_id' => 77, 'block' => 'Ranchi'],
+    ],
+]);
+
+$detailCols = $reportSvc->detailColumns($formId);
+check('Detail report detects location pivot columns', isset($detailCols['district']) && isset($detailCols['block']), implode(',', array_keys($detailCols)));
+
+$detailRows = $reportSvc->detailReport(['form_id' => $formId, 'viewer' => $admin], 50, 0);
+$found = array_values(array_filter($detailRows, static fn (array $r) => ($r['record_uuid'] ?? '') === $locRec['record_uuid']));
+check('Detail report pivots location into district/block', ($found[0]['district'] ?? '') === 'Ranchi' && ($found[0]['block'] ?? '') === 'Ranchi', json_encode($found[0] ?? null));
+
+$detailKpis = $reportSvc->detailKpis(['form_id' => $formId, 'viewer' => $admin]);
+check('Detail KPIs aggregate records', ($detailKpis['total'] ?? 0) >= 2 && ($detailKpis['districts'] ?? 0) >= 1, json_encode($detailKpis));
+
+$blockDetailRows = $reportSvc->detailReport(['form_id' => $formId, 'viewer' => $blockAdmin], 50, 0);
+$blockDetailUuids = array_column($blockDetailRows, 'record_uuid');
+check('Detail report scoped to viewer', !in_array($fkRec['record_uuid'], $blockDetailUuids, true));
+
+// 15b. All-column filters + KPI responsiveness (form-40 fixture, guarded).
+$f40 = (int) \App\Database\Connection::instance()
+    ->query("SELECT id FROM survey_forms WHERE code = 'GOVT_BUILDING_SURVEY' AND status = 'published' LIMIT 1")
+    ->fetchColumn();
+if ($f40 > 0) {
+    $f40All = $reportSvc->detailReport(['form_id' => $f40, 'viewer' => $admin], 1000, 0);
+    if ($f40All !== []) {
+        $f40Count = count($f40All);
+        $distVal = (string) ($f40All[0]['district'] ?? '');
+        if ($distVal !== '') {
+            $distFiltered = $reportSvc->detailReport(['form_id' => $f40, 'viewer' => $admin, 'district' => $distVal], 1000, 0);
+            check('Detail filter narrows rows by district', count($distFiltered) > 0 && count($distFiltered) <= $f40Count, "all={$f40Count} dist=" . count($distFiltered));
+        }
+
+        $f40Cols = $reportSvc->detailColumns($f40);
+        if (isset($f40Cols['building_category'])) {
+            $cats = $reportSvc->detailFieldDistinct('building_category', $f40, $admin);
+            if ($cats !== []) {
+                $catFiltered = $reportSvc->detailReport(['form_id' => $f40, 'viewer' => $admin, 'building_category' => $cats[0]], 1000, 0);
+                $allMatch = true;
+                foreach ($catFiltered as $cr) {
+                    if ((string) ($cr['building_category'] ?? '') !== $cats[0]) {
+                        $allMatch = false;
+                        break;
+                    }
+                }
+                check('Detail exact filter: building_category matches only', $allMatch && $catFiltered !== [], 'cat=' . $cats[0] . ' rows=' . count($catFiltered));
+            }
+        }
+        if (isset($f40Cols['built_up_area'])) {
+            $rangeFiltered = $reportSvc->detailReport(['form_id' => $f40, 'viewer' => $admin, 'built_up_area_min' => 0, 'built_up_area_max' => 1000000], 1000, 0);
+            check('Detail range filter: built_up_area min/max applied', count($rangeFiltered) === $f40Count, 'all=' . $f40Count . ' range=' . count($rangeFiltered));
+        }
+
+        $kpiAll = $reportSvc->detailKpis(['form_id' => $f40, 'viewer' => $admin]);
+        $kpiDist = $reportSvc->detailKpis(['form_id' => $f40, 'viewer' => $admin, 'district' => $distVal]);
+        check('Detail KPIs respond to filters', ($kpiDist['total'] ?? 0) > 0 && ($kpiDist['total'] ?? 0) <= ($kpiAll['total'] ?? 0), json_encode(['all' => $kpiAll['total'], 'dist' => $kpiDist['total']]));
+        check('Detail KPIs report departments/categories', ($kpiAll['departments'] ?? -1) >= 0 && ($kpiAll['categories'] ?? -1) >= 0, json_encode(['dept' => $kpiAll['departments'], 'cat' => $kpiAll['categories']]));
+    }
+}
+
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;
