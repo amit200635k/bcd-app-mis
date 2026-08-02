@@ -14,6 +14,7 @@ final class User
 {
     private array $roles = [];
     private array $permissions = [];
+    private array $portals = [];
 
     private function __construct(private array $data)
     {
@@ -74,6 +75,12 @@ final class User
         );
         $stmt->execute(['id' => $this->id()]);
         $this->permissions = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $stmt = $pdo->prepare(
+            'SELECT portal FROM user_portal_access WHERE user_id = :id'
+        );
+        $stmt->execute(['id' => $this->id()]);
+        $this->portals = $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 
     public function id(): int
@@ -129,6 +136,37 @@ final class User
     public function hasPermission(string $code): bool
     {
         return in_array($code, $this->permissions, true);
+    }
+
+    /** @return list<string> */
+    public function portals(): array
+    {
+        return $this->portals;
+    }
+
+    /** Whether the user may access the given portal. State admins are implicitly granted all. */
+    public function hasPortal(string $portal): bool
+    {
+        return $this->isStateAdmin() || in_array($portal, $this->portals, true);
+    }
+
+    /** @return list<int> form ids this user is explicitly granted access to. */
+    public function assignedFormIds(): array
+    {
+        $stmt = Connection::instance()->prepare(
+            'SELECT form_id FROM user_form_access WHERE user_id = :id'
+        );
+        $stmt->execute(['id' => $this->id()]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** Whether the user may fill/view the given form. State admins implicitly have all forms. */
+    public function canAccessForm(int $formId): bool
+    {
+        if ($this->isStateAdmin()) {
+            return true;
+        }
+        return in_array($formId, $this->assignedFormIds(), true);
     }
 
     public function isStateAdmin(): bool

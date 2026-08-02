@@ -33,6 +33,7 @@ $page = $page ?? '';
     <div class="brand mb-4"><i class="bi bi-shield-lock me-2"></i>BCD Admin</div>
     <nav class="nav flex-column gap-1">
         <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="dashboard.php"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+        <a class="nav-link <?= $page === 'access' ? 'active' : '' ?>" href="access.php"><i class="bi bi-shield-check me-2"></i>Roles &amp; Access</a>
         <a class="nav-link <?= $page === 'settings' ? 'active' : '' ?>" href="settings.php"><i class="bi bi-gear me-2"></i>Settings</a>
         <a class="nav-link <?= $page === 'notifications' ? 'active' : '' ?>" href="notifications.php"><i class="bi bi-bell me-2"></i>Notifications</a>
         <a class="nav-link <?= $page === 'audit' ? 'active' : '' ?>" href="audit.php"><i class="bi bi-journal-text me-2"></i>Audit Logs</a>

@@ -60,9 +60,19 @@ async function clickCssContaining(page, css, text) {
 }
 
 async function type(page, selector, value) {
+    const want = String(value);
     await page.waitForSelector(selector, { visible: true, timeout: 8000 });
-    await page.click(selector, { clickCount: 3 });
-    await page.type(selector, String(value));
+    for (let attempt = 0; attempt < 3; attempt++) {
+        await page.click(selector, { clickCount: 3 });
+        await page.type(selector, want, { delay: 10 });
+        const got = await page.evaluate((s) => {
+            const el = document.querySelector(s);
+            if (!el) return null;
+            return (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') ? el.value : (el.textContent || '');
+        }, selector).catch(() => null);
+        if (got === want) return;
+        console.log(`  [type retry ${attempt + 1}] ${selector} got ${JSON.stringify(got)} want ${JSON.stringify(want)}`);
+    }
 }
 
 // Wait for a text fragment to appear anywhere in the document.

@@ -14,6 +14,8 @@ use App\Services\NotificationService;
 use App\Services\ReplicationService;
 use App\Services\ReportService;
 use App\Services\SurveyService;
+use App\Services\UserService;
+use App\Models\User;
 
 function check(string $name, bool $ok, string $detail = ''): void
 {
@@ -120,5 +122,57 @@ $rep = new ReportService();
 check('Survey-wise report', count($rep->surveyWise()) >= 1);
 check('Status summary', count($rep->statusSummary()) >= 1);
 check('GPS missing report', is_array($rep->gpsMissing()));
+
+// 8. Government Building Survey seed integrity (17 sections, published)
+$pdo = \App\Database\Connection::instance();
+$gbs = $pdo->query("SELECT id, status FROM survey_forms WHERE code = 'GOVT_BUILDING_SURVEY'")->fetch();
+check('Govt Building form exists + published', $gbs !== false && $gbs['status'] === 'published', json_encode($gbs));
+if ($gbs !== false) {
+    $gbsVersionId = $pdo->query(
+        "SELECT id FROM survey_versions WHERE form_id = {$gbs['id']} AND status = 'published' ORDER BY version DESC LIMIT 1"
+    )->fetchColumn();
+    $gbsSections = (int) $pdo->query(
+        "SELECT COUNT(*) FROM survey_sections WHERE form_version_id = " . (int) $gbsVersionId
+    )->fetchColumn();
+    $gbsFields = (int) $pdo->query(
+        "SELECT COUNT(*) FROM survey_fields WHERE section_id IN (SELECT id FROM survey_sections WHERE form_version_id = " . (int) $gbsVersionId . ")"
+    )->fetchColumn();
+    check('Govt Building form has 17 sections', $gbsSections === 17, "sections={$gbsSections}");
+    check('Govt Building form has 100+ fields', $gbsFields >= 100, "fields={$gbsFields}");
+    check('Govt Building master groups', (int) $pdo->query("SELECT COUNT(*) FROM master_groups WHERE code IN ('DEPARTMENT','BUILDING_SUBCATEGORY')")->fetchColumn() === 2);
+}
+
+// 9. Portal & form access helpers
+$usvc = new UserService();
+$sk = User::find(5);
+check('Demo user has mis portal', $sk !== null && $sk->hasPortal('mis'));
+check('Demo user form access assigned', $sk !== null && in_array((int) $gbs['id'], $sk->assignedFormIds(), true));
+$admin = User::find(1);
+check('State admin implicit all portals', $admin->hasPortal('admin') && $admin->hasPortal('mis'));
+check('State admin implicit all forms', $admin->canAccessForm((int) $gbs['id']));
+
+// 10. Scope enforcement
+$blockAdmin = User::find(4);
+$assignable = $usvc->assignableRoles($blockAdmin);
+$codes = array_column($assignable, 'code');
+check('Block admin cannot assign district role', !in_array('district', $codes, true) && in_array('surveyor', $codes, true), implode(',', $codes));
+$blocked = false;
+try {
+    $usvc->create([
+        'username' => 'SMOKE_noscope' . random_int(100, 999),
+        'password' => 'StrongPass1',
+        'full_name' => 'No Scope',
+        'district_id' => 21,
+        'roles' => [$assignable[0]['id']],
+    ], $blockAdmin->id(), $blockAdmin);
+} catch (Throwable) {
+    $blocked = true;
+}
+check('Scope blocks cross-district user create', $blocked);
+
+// 11. assignableForms filtered by actor access
+$assignableForms = $usvc->assignableForms($sk);
+$allPublished = (int) $pdo->query('SELECT COUNT(*) FROM survey_forms WHERE status = "published" AND is_active = 1')->fetchColumn();
+check('assignableForms scoped for district user', count($assignableForms) < $allPublished && count($assignableForms) >= 1, count($assignableForms) . '/' . $allPublished);
 
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;

@@ -22,8 +22,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($validator->fails()) {
         $error = 'Please enter both username and password.';
     } elseif (SessionAuth::attempt((string) $_POST['username'], (string) $_POST['password'])) {
-        flash('success', 'Welcome back!');
-        redirect('mis/dashboard.php');
+        $loggedIn = SessionAuth::user();
+        if ($loggedIn !== null && $loggedIn->hasPortal('mis')) {
+            flash('success', 'Welcome back!');
+            redirect('mis/dashboard.php');
+        }
+        SessionAuth::logout();
+        $error = 'You do not have access to the MIS portal.';
     } else {
         $error = 'Invalid credentials or account is locked.';
     }

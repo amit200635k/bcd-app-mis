@@ -102,6 +102,13 @@ try {
     }
     runSqlFile($pdo, __DIR__ . '/seed.sql', 'Seed');
 
+    // Idempotent incremental migrations (CREATE TABLE IF NOT EXISTS etc.).
+    $migrations = glob(__DIR__ . '/migrations/*.sql') ?: [];
+    sort($migrations);
+    foreach ($migrations as $migration) {
+        runSqlFile($pdo, $migration, 'Migration ' . basename($migration));
+    }
+
     echo PHP_EOL . "Migration completed successfully." . PHP_EOL;
 } catch (Throwable $e) {
     Logger::error('Migration failed', ['message' => $e->getMessage()]);

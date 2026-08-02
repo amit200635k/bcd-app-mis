@@ -44,6 +44,7 @@ try {
          VALUES (:u, :p, :plain, :n, :m, :d, :b, "active")'
     );
     $roleAssign = $pdo->prepare('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (:u, :r)');
+    $portalGrant = $pdo->prepare('INSERT IGNORE INTO user_portal_access (user_id, portal, granted_by) VALUES (:u, "mis", 1)');
     $userIds = [];
 
     foreach ($users as [$username, $name, $mobile, $role, $dist]) {
@@ -54,7 +55,7 @@ try {
             'n' => $name,
             'm' => $mobile,
             'd' => $dist,
-            'b' => $role === 'surveyor' ? $block : null,
+            'b' => in_array($role, ['surveyor', 'block'], true) ? $block : null,
         ]);
         $uid = (int) $pdo->lastInsertId();
         $userIds[$username] = $uid;
@@ -63,6 +64,7 @@ try {
             // Surveyors additionally get mobile permissions.
             $roleAssign->execute(['u' => $uid, 'r' => $roleIds['surveyor']]);
         }
+        $portalGrant->execute(['u' => $uid]);
     }
 
     $pdo->commit();
@@ -111,6 +113,12 @@ if ($formId === 0) {
         "SELECT id FROM survey_versions WHERE form_id = {$formId} AND status = 'published' ORDER BY version DESC LIMIT 1"
     )->fetchColumn();
     echo "Survey form AGRICULTURE_CENSUS already exists (v{$versionId})." . PHP_EOL;
+}
+
+// Grant form access to demo users (admin is implicit state admin).
+$formGrant = $pdo->prepare('INSERT IGNORE INTO user_form_access (user_id, form_id, granted_by) VALUES (:u, :f, 1)');
+foreach ($userIds as $uid) {
+    $formGrant->execute(['u' => $uid, 'f' => $formId]);
 }
 
 // Sample records (only if table empty for this form).

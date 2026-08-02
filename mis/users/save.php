@@ -26,10 +26,10 @@ try {
     if ($v->fails()) {
         flash('error', implode(' ', array_merge(...array_values($v->errors()))));
     } elseif ($id > 0) {
-        $service->update($id, $_POST);
+        $service->update($id, $_POST, $user);
         flash('success', 'User updated.');
     } else {
-        $service->create($_POST, $user->id());
+        $service->create($_POST, $user->id(), $user);
         flash('success', 'User created. Default password: Welcome@123');
     }
 } catch (Throwable $e) {

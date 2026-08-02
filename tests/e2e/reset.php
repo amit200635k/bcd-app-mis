@@ -30,7 +30,34 @@ try {
     $pdo->exec(
         "DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e_%')"
     );
+    $pdo->exec(
+        "DELETE FROM user_portal_access WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e_%')"
+    );
+    $pdo->exec(
+        "DELETE FROM user_form_access WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e_%')"
+    );
     $pdo->exec("DELETE FROM users WHERE username LIKE 'e2e_%'");
+
+    // E2E mobile-API artifacts (devices, images, records created via /api).
+    $pdo->exec(
+        "DELETE FROM survey_images WHERE record_id IN (SELECT id FROM survey_records WHERE record_uuid LIKE 'api-test-%')"
+    );
+    $pdo->exec("DELETE FROM survey_records WHERE record_uuid LIKE 'api-test-%'");
+    $pdo->exec(
+        "DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE username IN ('rk_surveyor','sk_district','dh_surveyor','jb_block'))"
+    );
+    $pdo->exec("DELETE FROM devices WHERE device_id LIKE 'TEST-DEV-%'");
+
+    // Physical test uploads (uploads/survey/<id>) created during E2E/API tests.
+    $uploadRoot = __DIR__ . '/../../uploads/survey';
+    if (is_dir($uploadRoot)) {
+        foreach (glob($uploadRoot . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
+            foreach (glob($dir . '/*') ?: [] as $file) {
+                @unlink($file);
+            }
+            @rmdir($dir);
+        }
+    }
 
     $pdo->exec("DELETE FROM settings WHERE setting_key LIKE 'test.%'");
 

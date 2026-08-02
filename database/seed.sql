@@ -57,6 +57,13 @@ FROM `roles` r JOIN `permissions` p ON p.`code` IN
   ('mobile.login','mobile.sync','mobile.photo','mobile.gps','mobile.offline','mobile.download','dashboard.view')
 WHERE r.`code` = 'surveyor';
 
+-- Hierarchy admins (district/block/panchayat/village) manage users within their scope
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM `roles` r JOIN `permissions` p ON p.`code` IN
+  ('dashboard.view','users.view','users.manage')
+WHERE r.`code` IN ('district','block','panchayat','village');
+
 -- A default state (used by deployments within a state)
 INSERT INTO `states` (`code`, `name`) VALUES
 ('ST', 'State Placeholder');

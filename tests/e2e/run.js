@@ -385,6 +385,7 @@ async function misSuite(page) {
     step('MIS: Create a user via modal');
     await page.click('[data-bs-target="#userModal"]');
     await page.waitForSelector('#f_full_name', { visible: true, timeout: 8000 });
+    await page.waitForNetworkIdle({ idleTime: 300 });
     const uname = 'e2e_' + Date.now().toString().slice(-8);
     await type(page, '#f_full_name', 'E2E Tester');
     await type(page, '#f_username', uname);
@@ -398,11 +399,60 @@ async function misSuite(page) {
         return true;
     });
     ok('role selectable in modal', roleSelected);
+    const portalTicked = await page.evaluate(() => {
+        const cb = document.getElementById('portal_mis');
+        if (!cb) return false;
+        cb.checked = true;
+        return true;
+    });
+    ok('portal checkbox available + ticked', portalTicked);
+    const formSelected = await page.evaluate(() => {
+        const sel = document.getElementById('f_forms');
+        if (!sel || !sel.options.length) return false;
+        sel.options[0].selected = true;
+        return true;
+    });
+    ok('form access selectable in modal', formSelected);
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
         page.click('#userModal button[type=submit]'),
     ]);
     ok('create-user flash shown', await hasText(page, 'User created. Default password: Welcome@123'));
+
+    step('MIS: Edit user shows saved portal + form access');
+    const dbgRows = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('tr')).map((tr) => ({
+            text: tr.textContent.slice(0, 80),
+            username: tr.querySelector('td:nth-child(2)')?.textContent.trim(),
+            hasBtn: !!tr.querySelector('button[onclick*="openModal"]'),
+            onclick: tr.querySelector('button[onclick*="openModal"]')?.getAttribute('onclick'),
+        }))
+    );
+    console.log('  [DEBUG] uname=' + uname + ' rows=' + JSON.stringify(dbgRows.filter((r) => r.text.includes('e2e_'))));
+    const editUser = await page.evaluate((username) => {
+        const rows = Array.from(document.querySelectorAll('tr'));
+        const byName = rows.find((tr) => tr.textContent.includes('E2E Tester'));
+        const byUname = rows.find((tr) => tr.textContent.includes(username));
+        const row = byName || byUname;
+        if (!row) return { clicked: false, byName: !!byName, byUname: !!byUname, count: rows.length };
+        const btn = row.querySelector('button[onclick*="openModal"]');
+        if (!btn) return { clicked: false, byName: !!byName, byUname: !!byUname, count: rows.length };
+        btn.click();
+        return { clicked: true, byName: !!byName, byUname: !!byUname, count: rows.length };
+    }, uname);
+    console.log('  [DEBUG] editUser=' + JSON.stringify(editUser));
+    ok('user edit opened', editUser.clicked);
+    await page.waitForSelector('#f_full_name', { visible: true, timeout: 8000 });
+    await page.waitForNetworkIdle({ idleTime: 300 });
+    await new Promise((r) => setTimeout(r, 800));
+    const accessPersisted = await page.evaluate(() => {
+        const portalMis = document.getElementById('portal_mis');
+        const formsSel = document.getElementById('f_forms');
+        const selectedForms = formsSel ? Array.from(formsSel.selectedOptions).map((o) => o.value) : [];
+        return portalMis && portalMis.checked && selectedForms.length >= 1;
+    });
+    ok('portal + form access persist in edit modal', accessPersisted);
+    await page.keyboard.press('Escape');
 
     step('MIS: GIS dashboard');
     await clickText(page, 'GIS');
@@ -454,6 +504,42 @@ async function adminSuite(page) {
     ok('district admin is blocked (403)', /403/.test(body));
     await other.close();
     await ctx.close();
+
+    step('ADMIN: Roles & Access page');
+    await page.goto(BASE + '/admin/access.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Roles & Access');
+    ok('access page loads', await hasText(page, 'Roles & Access'));
+    ok('Manage buttons present', await hasText(page, 'Manage'));
+    const manageClicked = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent.includes('Manage') && b.getAttribute('onclick')?.includes(', false)'));
+        if (!btn) return false;
+        btn.click();
+        return true;
+    });
+    ok('manage access modal opened', manageClicked);
+    await page.waitForSelector('#ac_portal_mis', { visible: true, timeout: 8000 });
+    const accessModalShown = await page.evaluate(() => {
+        const mis = document.getElementById('ac_portal_mis');
+        const admin = document.getElementById('ac_portal_admin');
+        const forms = document.getElementById('ac_forms');
+        return !!mis && !!admin && !!forms && forms.options.length >= 1;
+    });
+    ok('portal + form access controls rendered', accessModalShown);
+    const accessToggled = await page.evaluate(() => {
+        const adminCb = document.getElementById('ac_portal_admin');
+        if (!adminCb) return false;
+        adminCb.checked = true;
+        const forms = document.getElementById('ac_forms');
+        if (forms && forms.options.length) forms.options[0].selected = true;
+        const form = document.querySelector('#accessModal form');
+        if (!form) return false;
+        form.submit();
+        return true;
+    });
+    ok('access assignment submitted', accessToggled);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('access saved flash', await hasText(page, 'Access updated.'));
+    await assertNoPhpWarnings(page, 'admin/access.php');
 
     step('ADMIN: Settings save + list');
     await page.goto(BASE + '/admin/settings.php', { waitUntil: 'networkidle0' });
