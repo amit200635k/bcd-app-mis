@@ -28,6 +28,15 @@ $router->get('/v1/auth/me', \App\Api\Controllers\AuthController::me(...));
 $router->get('/v1/masters/locations', \App\Api\Controllers\MasterController::locations(...));
 $router->get('/v1/masters', \App\Api\Controllers\MasterController::index(...));
 
+// ---------- Survey forms ----------
+$router->get('/v1/forms', \App\Api\Controllers\FormController::index(...));
+$router->get('/v1/forms/{identifier}', \App\Api\Controllers\FormController::show(...));
+
+// ---------- Survey records ----------
+$router->post('/v1/records', \App\Api\Controllers\RecordController::store(...));
+$router->get('/v1/records', \App\Api\Controllers\RecordController::index(...));
+$router->post('/v1/records/{id}/status', \App\Api\Controllers\RecordController::transition(...));
+
 // ---------- System ----------
 $router->get('/v1/health', \App\Api\Controllers\HealthController::check(...));
 $router->get('/v1/version', \App\Api\Controllers\HealthController::version(...));
