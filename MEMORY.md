@@ -117,6 +117,11 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - `POST /v1/auth/*`, `GET /v1/forms` (access-filtered), `GET /v1/forms/{id}` (403 if no access), `POST /v1/records` (checks `canAccessForm`), `GET /v1/records` (scoped list), `GET /v1/records/{identifier}` (by id or uuid, with answers + images), `POST /v1/records/{id}/photos` (multipart `files[]` → `survey_images` + `uploads/survey/<recordId>/`), `POST /v1/devices` / `DELETE /v1/devices/{device_id}` (register + FCM token), `GET /v1/sync/status` (pending queue count by status), `/v1/location/*`, `/v1/master/*`, `/v1/notifications/*`, `/v1/gis/*`, `/v1/replication/*`, `/v1/health`.
 - `RecordController` uses `api/user_data.php`-independent `identifier` lookup (id or uuid).
 
+## Case file (form 40, browser-based)
+
+- `tests/case_form40.js` — standalone headed-Chrome case (does NOT touch the E2E suite). Logs into MIS as `admin`, opens the form-40 builder preview (`mis/builder/preview.php?id=40`) so you can SEE the rendered form, then pushes a full form-40 record (127 answers: master, location_cascade, dropdowns, radios, multi_select, numbers, GPS) + 4 images (canvas-generated + a screenshot of the preview) through the real REST API (`/v1/records`, `/v1/records/{id}/photos` with `files[]` + `field_key` + `category`), then navigates Monitoring (form 40) → Record Detail to show answers + rendered images. KEEPS the record by default; `node tests/case_form40.js --cleanup [id]` deletes it + its files.
+- Gotchas baked into the case: photo/signature fields must be submitted as (empty) answers first or `/photos` can't resolve `answer_id`; PHP only builds `$_FILES['files']` arrays when the multipart field is named `files[]`; the monitoring table shows record `#id`, not answer values.
+
 ## E2E Harness
 
 - `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 173 checks, all passing.
@@ -160,6 +165,6 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - **GIS pages:** `gis/gis_data.php`, `gis/index.php` (scoped points + forms)
 - **Admin panel:** `admin/access.php` (Roles & Access), `admin/masters.php`, `admin/dashboard.php`, `admin/settings.php`, `admin/notifications.php`, `admin/audit.php`, `admin/replication.php`, `admin/health.php`
 - **Layouts:** `common/views/layout.php` (MIS), `common/views/admin_layout.php` (admin)
-- **Tests:** `tests/smoke.php`, `tests/e2e/run.js`, `tests/e2e/lib.js`, `tests/e2e/reset.php`
+- **Tests:** `tests/smoke.php`, `tests/e2e/run.js`, `tests/e2e/lib.js`, `tests/e2e/reset.php`, `tests/case_form40.js` (browser case: push form-40 record + images)
 - **Config (gitignored):** `config/.env` (`APP_URL=http://localhost:81/bcd-app`)
 - **Root:** `.htaccess`, `.gitignore`, `ROADMAP.md`, `readme.md`, `docs/API.md`, `docs/INSTALL.md`, `MEMORY.md` (this file)

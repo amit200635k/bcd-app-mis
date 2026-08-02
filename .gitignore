@@ -53,3 +53,7 @@ composer.phar
 # Temporary
 tmp/
 *.tmp
+
+# Test runtime state (case file latest record pointer)
+tests/.case_form40.latest.json
+tests/.case_form40_cleanup.php
