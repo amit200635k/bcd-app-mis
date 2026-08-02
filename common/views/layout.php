@@ -33,29 +33,29 @@ $page = $page ?? '';
 <div class="sidebar p-3">
     <div class="brand mb-4"><i class="bi bi-clipboard-data me-2"></i>BCD Survey</div>
     <nav class="nav flex-column gap-1">
-        <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="dashboard.php"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+        <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= url('mis/dashboard.php') ?>"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <?php if ($user->hasPermission('survey_builder.view')): ?>
-        <a class="nav-link <?= $page === 'builder' ? 'active' : '' ?>" href="builder/index.php"><i class="bi bi-ui-checks me-2"></i>Survey Builder</a>
+        <a class="nav-link <?= $page === 'builder' ? 'active' : '' ?>" href="<?= url('mis/builder/index.php') ?>"><i class="bi bi-ui-checks me-2"></i>Survey Builder</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('masters.view')): ?>
-        <a class="nav-link <?= $page === 'masters' ? 'active' : '' ?>" href="masters/index.php"><i class="bi bi-list-ul me-2"></i>Masters</a>
+        <a class="nav-link <?= $page === 'masters' ? 'active' : '' ?>" href="<?= url('mis/masters/index.php') ?>"><i class="bi bi-list-ul me-2"></i>Masters</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('monitoring.view')): ?>
-        <a class="nav-link <?= $page === 'monitoring' ? 'active' : '' ?>" href="monitoring.php"><i class="bi bi-eye me-2"></i>Monitoring</a>
+        <a class="nav-link <?= $page === 'monitoring' ? 'active' : '' ?>" href="<?= url('mis/monitoring.php') ?>"><i class="bi bi-eye me-2"></i>Monitoring</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('gis.view')): ?>
-        <a class="nav-link <?= $page === 'gis' ? 'active' : '' ?>" href="../gis/index.php"><i class="bi bi-geo-alt me-2"></i>GIS</a>
+        <a class="nav-link <?= $page === 'gis' ? 'active' : '' ?>" href="<?= url('gis/index.php') ?>"><i class="bi bi-geo-alt me-2"></i>GIS</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('reports.view')): ?>
-        <a class="nav-link <?= $page === 'reports' ? 'active' : '' ?>" href="reports.php"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</a>
+        <a class="nav-link <?= $page === 'reports' ? 'active' : '' ?>" href="<?= url('mis/reports.php') ?>"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</a>
         <?php endif; ?>
         <?php if ($user->hasPermission('users.manage')): ?>
-        <a class="nav-link <?= $page === 'users' ? 'active' : '' ?>" href="users/index.php"><i class="bi bi-people me-2"></i>Users</a>
+        <a class="nav-link <?= $page === 'users' ? 'active' : '' ?>" href="<?= url('mis/users/index.php') ?>"><i class="bi bi-people me-2"></i>Users</a>
         <?php endif; ?>
         <?php if ($user->isStateAdmin()): ?>
-        <a class="nav-link" href="../admin/index.php"><i class="bi bi-shield-lock me-2"></i>Admin Panel</a>
+        <a class="nav-link" href="<?= url('admin/index.php') ?>"><i class="bi bi-shield-lock me-2"></i>Admin Panel</a>
         <?php endif; ?>
-        <a class="nav-link" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
+        <a class="nav-link" href="<?= url('mis/logout.php') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
     </nav>
 </div>
 <?php endif; ?>

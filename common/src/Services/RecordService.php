@@ -178,6 +178,15 @@ final class RecordService
                 'rem'   => $remark,
             ]);
             $pdo->commit();
+            \App\Audit\AuditLog::record(
+                'record.transition',
+                'survey_records',
+                'survey_record',
+                (string) $recordId,
+                ['status' => (string) $current],
+                ['status' => $toStatus, 'remark' => $remark],
+                $actorId
+            );
             return true;
         } catch (\Throwable $e) {
             $pdo->rollBack();

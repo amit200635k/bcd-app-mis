@@ -156,7 +156,7 @@ const rolesMap = {};
 <?php foreach ($roles as $r): ?>rolesMap[<?= (int) $r['id'] ?>] = '<?= e($r['name']) ?>';<?php endforeach; ?>
 
 async function loadLocations() {
-    const res = await fetch('../api/dropdowns.php?type=district');
+    const res = await fetch('../../api/dropdowns.php?type=district');
     const data = await res.json();
     const sel = document.getElementById('f_district');
     sel.innerHTML = '<option value="">— None —</option>' + data.items.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
@@ -164,7 +164,7 @@ async function loadLocations() {
         const bid = document.getElementById('f_block');
         bid.innerHTML = '<option value="">— None —</option>';
         if (!sel.value) return;
-        const r = await fetch(`../api/dropdowns.php?type=block&district_id=${sel.value}`);
+        const r = await fetch(`../../api/dropdowns.php?type=block&district_id=${sel.value}`);
         const b = await r.json();
         bid.innerHTML = '<option value="">— None —</option>' + b.items.map(x => `<option value="${x.id}">${x.name}</option>`).join('');
     };
@@ -175,7 +175,7 @@ async function openModal(id) {
     document.getElementById('pwField').classList.toggle('d-none', !!id);
     await loadLocations();
     if (id) {
-        const res = await fetch(`../api/user_data.php?id=${id}`);
+        const res = await fetch(`../../api/user_data.php?id=${id}`);
         const u = await res.json();
         document.getElementById('userId').value = u.id;
         document.getElementById('f_full_name').value = u.full_name;

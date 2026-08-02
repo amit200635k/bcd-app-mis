@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Auth;
 
+use App\Audit\AuditLog;
 use App\Database\Connection;
 use App\Models\User;
 use App\Security\Password;
@@ -30,6 +31,7 @@ final class SessionAuth
 
         if ($row === false) {
             self::sleep();
+            AuditLog::record('auth.login_failed', 'auth', 'user', null, [], ['username' => $username]);
             return false;
         }
 
@@ -37,6 +39,7 @@ final class SessionAuth
         if (isset($row['locked_until']) && $row['locked_until'] !== null) {
             if (strtotime((string) $row['locked_until']) > time()) {
                 self::sleep();
+                AuditLog::record('auth.login_blocked', 'auth', 'user', (string) $row['id'], [], ['username' => $username], (int) $row['id']);
                 return false;
             }
             // Lock expired → reset attempts.
@@ -45,13 +48,18 @@ final class SessionAuth
         }
 
         if ($row['status'] !== 'active' || !Password::verify($password, (string) $row['password_hash'])) {
-            self::incrementAttempts((int) $row['id'], $row['login_attempts']);
+            $locked = self::incrementAttempts((int) $row['id'], $row['login_attempts']);
             self::sleep();
+            AuditLog::record(
+                $locked ? 'auth.account_locked' : 'auth.login_failed',
+                'auth', 'user', (string) $row['id'], [], ['username' => $username], (int) $row['id']
+            );
             return false;
         }
 
         // Success — reset attempts & timestamps.
         self::onSuccessfulLogin((int) $row['id']);
+        AuditLog::record('auth.login', 'auth', 'user', (string) $row['id'], [], ['username' => $username], (int) $row['id']);
 
         $user = User::fromRow($row);
         if ($remember) {
@@ -98,8 +106,12 @@ final class SessionAuth
     public static function logout(): void
     {
         self::start();
+        $userId = $_SESSION[self::SESSION_KEY] ?? null;
         unset($_SESSION[self::SESSION_KEY], $_SESSION['_bcd_last_activity']);
         session_regenerate_id(true);
+        if ($userId !== null) {
+            AuditLog::record('auth.logout', 'auth', 'user', (string) $userId, [], [], (int) $userId);
+        }
     }
 
     public static function requireAuth(): void
@@ -150,11 +162,12 @@ final class SessionAuth
         ]);
     }
 
-    private static function incrementAttempts(int $userId, int $current): void
+    private static function incrementAttempts(int $userId, int $current): bool
     {
         $attempts = $current + 1;
         $lockedUntil = null;
-        if ($attempts >= self::MAX_ATTEMPTS) {
+        $locked = $attempts >= self::MAX_ATTEMPTS;
+        if ($locked) {
             $lockedUntil = date('Y-m-d H:i:s', time() + self::LOCK_MINUTES * 60);
             $attempts = 0;
         }
@@ -162,6 +175,7 @@ final class SessionAuth
             'UPDATE users SET login_attempts = :a, locked_until = :l WHERE id = :id'
         );
         $stmt->execute(['a' => $attempts, 'l' => $lockedUntil, 'id' => $userId]);
+        return $locked;
     }
 
     private static function resetLock(int $userId): void

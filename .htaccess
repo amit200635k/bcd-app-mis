@@ -8,6 +8,9 @@ Options -Indexes
     RewriteBase /bcd-app/
 
     # API — route everything under /api to api/index.php
+    # (unless a real script exists there, e.g. dropdowns.php / user_data.php)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^api(?:/(.*))?$ api/index.php [L,QSA]
 
     # MIS portal
