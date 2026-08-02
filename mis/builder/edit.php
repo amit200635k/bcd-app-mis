@@ -20,19 +20,12 @@ if ($form === null) {
     redirect('mis/builder/index.php');
 }
 
-// Use draft version (or latest) for editing.
+// Use draft version (or create one cloned from the published version) for editing.
 $pdo = \App\Database\Connection::instance();
-$stmt = $pdo->prepare('SELECT id, version FROM survey_versions WHERE form_id = :f AND status = "draft" ORDER BY version DESC LIMIT 1');
-$stmt->execute(['f' => $formId]);
-$versionRow = $stmt->fetch();
+$versionId = $service->draftForEditing($formId, $user->id());
+$versionInfo = $service->versionInfo($formId);
 
-if ($versionRow === false) {
-    $versionId = $service->createVersion($formId, $user->id(), 'new draft');
-} else {
-    $versionId = (int) $versionRow['id'];
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['save', 'save_sync'], true)) {
     $sections = json_decode((string) ($_POST['structure'] ?? '[]'), true);
     if (!is_array($sections)) {
         flash('error', 'Invalid structure payload.');
@@ -40,6 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
     }
     try {
         $service->saveStructure($formId, $versionId, $sections);
+        if (($_POST['action'] ?? '') === 'save_sync') {
+            redirect('mis/builder/sync.php?id=' . $formId . '&note=' . rawurlencode('Saved & synced via editor'));
+        }
         flash('success', 'Form structure saved.');
     } catch (Throwable $e) {
         flash('error', exception_message($e));
@@ -56,11 +52,22 @@ ob_start(); ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h4 class="mb-0"><i class="bi bi-pencil-square me-2"></i><?= e($form['title']) ?></h4>
-        <span class="text-muted small"><code><?= e($form['code']) ?></code> — editing draft version <?= (int) $definition['version'] ?></span>
+        <span class="text-muted small">
+            <code><?= e($form['code']) ?></code> — editing draft version <?= (int) $definition['version'] ?>
+            <?php if ($versionInfo['published_version'] > 0): ?>
+                · <span class="badge bg-success">published v<?= (int) $versionInfo['published_version'] ?></span>
+                <?php if ($versionInfo['pending_changes']): ?>
+                    <span class="badge bg-warning text-dark">pending changes — v<?= (int) $versionInfo['draft_version'] ?></span>
+                <?php endif; ?>
+            <?php endif; ?>
+        </span>
     </div>
     <div>
         <a href="index.php" class="btn btn-outline-secondary btn-sm">Back</a>
         <a href="preview.php?id=<?= $formId ?>" class="btn btn-outline-info btn-sm"><i class="bi bi-eye"></i> Preview</a>
+        <?php if ($user->hasPermission('survey_builder.publish')): ?>
+        <button class="btn btn-primary btn-sm" id="btnSaveSync" form="builderForm" onclick="return confirm('Save draft v<?= (int) $definition['version'] ?> and sync it to all web/mobile users? The live version is replaced immediately.')"><i class="bi bi-arrow-repeat me-1"></i>Save & Sync to All</button>
+        <?php endif; ?>
         <button class="btn btn-success btn-sm" id="btnSave"><i class="bi bi-check-lg me-1"></i>Save Structure</button>
     </div>
 </div>
@@ -81,7 +88,7 @@ ob_start(); ?>
     <!-- Form structure -->
     <div class="col-lg-9">
         <form id="builderForm" method="post">
-            <input type="hidden" name="action" value="save">
+            <input type="hidden" name="action" id="actionInput" value="save">
             <input type="hidden" name="structure" id="structureInput" value="">
             <div id="sections"></div>
         </form>
@@ -268,9 +275,18 @@ document.getElementById('btnAddSection').addEventListener('click', () => {
 });
 
 document.getElementById('btnSave').addEventListener('click', () => {
+    document.getElementById('actionInput').value = 'save';
     document.getElementById('structureInput').value = JSON.stringify(state);
     document.getElementById('builderForm').submit();
 });
+
+const btnSaveSync = document.getElementById('btnSaveSync');
+if (btnSaveSync) {
+    btnSaveSync.addEventListener('click', () => {
+        document.getElementById('actionInput').value = 'save_sync';
+        document.getElementById('structureInput').value = JSON.stringify(state);
+    });
+}
 
 render();
 </script>

@@ -8,7 +8,7 @@
 
 Build/continue the **BCD Generic Dynamic Survey Platform** at `C:\xampp\htdocs\bcd-app`, synced to GitHub (`https://github.com/amit200635k/bcd-app-mis`, branch `main`).
 
-Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plus an admin panel, a headed-Chrome E2E harness, master-data field type, and dependent location-dropdown (cascade) field type.
+Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plus an admin panel, a headed-Chrome E2E harness, master-data field type, dependent location-dropdown (cascade) field type, and the "edit published form + sync to all users" flow.
 
 ## Instructions / Environment
 
@@ -62,16 +62,28 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - `RecordService::normalizeLocation()` stores `value_text = "Ranchi / Kanke / …"` and `value_json = {"district_id":…,"district_name":…,…}`.
 - Mobile client (not in this repo) must call `/v1/location/scope` on form load and `/v1/location/children` on each select change.
 
+### Edit published form + sync to all (web + mobile)
+- **Flow:** published form → admin clicks edit → `SurveyService::draftForEditing()` resumes the existing non-empty draft OR clones the latest published structure into a new draft (so the editor opens a working copy of the live form, never a blank page). Admin edits the draft, then clicks **"Save & Sync to All"**.
+- `draftForEditing(int $formId, int $userId)` — resumes latest draft only if it has structure (`hasStructure()` = ≥1 section); otherwise creates a new draft cloned from the latest published version. Works for both published and never-published forms.
+- `versionInfo(int $formId)` → `['published_version' => int, 'draft_version' => int, 'pending_changes' => bool]` (pending = draft_version > published_version).
+- `mis/builder/sync.php` (NEW): requires `survey_builder.publish`; guards "no pending draft changes"; calls `publish()` then `NotificationService::send(title, body, null, null, $user->id(), 'info')` to **broadcast to all active users** (web + mobile get a "new form version" notification); writes `survey.sync` audit entry; flashes "Draft published as vN and synced to all users (web + mobile).".
+- `mis/builder/edit.php`: POST `action=save` (save draft) or `action=save_sync` (save then redirect to `sync.php`). Header shows `published vN` badge + `pending changes — vN` badge; **Save & Sync to All** button only for users with `survey_builder.publish`.
+- `mis/builder/index.php`: version column shows `vN draft` pending badge when `pending_changes`; action buttons — sync button (`sync.php`) for published+pending (publish permission), else rocket publish button (`publish.php`) for unpublished forms. Edit (pencil) always available.
+- Publish permission gate: `survey_builder.publish`. Non-publishers can edit/save drafts but see no sync/publish buttons.
+- Gotcha: `createForm()` always creates an empty draft v1; `draftForEditing()` ignores it (no structure) and clones from published instead.
+
 ## E2E Harness
 
-- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 119 checks, all passing.
+- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 133 checks, all passing.
 - Helpers in `tests/e2e/lib.js` (`BASE`, `CREDS`, `step/check/ok`, `clickText`, `type`, `waitForText`, `hasText`, `assertNoPhpWarnings`, `wirePage`, `summary`); dialogs auto-accepted.
 - Form submits in tests go through `page.evaluate(form.submit())` (bypasses `onsubmit` confirm dialogs).
 - Puppeteer does NOT support `:has-text()`; use `page.evaluate` + `Array.from(...).find`.
+- E2E MIS suite now covers: create draft → publish → edit published (clone) → Save & Sync → verify pending badge cleared + sync button gone + broadcast flash.
+- `tests/smoke.php` covers `draftForEditing` clone/resume, `versionInfo` pending states, sync publish bump, live definition containing the synced field, and broadcast recipient count. (Note: notification "send/deliver" check asserts id presence in `forUser()` list, not index 0 — same-second ordering is nondeterministic.)
 
 ## Milestones (git history)
 
-- `06b5a1c` — location_cascade field type + `/v1/location/*` API + scope-aware preview + `Request::header()` fix. (latest)
+- `06b5a1c` — location_cascade field type + `/v1/location/*` API + scope-aware preview + `Request::header()` fix. (previous)
 - `7641300` — master-data field type (admin CRUD, builder linkage, id+name storage) + draft-form preview.
 - `d088f8b` — survey builder option save fix + user-modal race fix + `plain_password` dev column.
 - `e1b958c` — E2E suite (headed Chrome) + bugs it surfaced (.htaccess API rewrite, absolute sidebar URLs, `../../api/` fetch fix, audit logging for auth + transitions).
@@ -81,8 +93,8 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 
 ## Next Steps / Ideas (not yet done)
 
-- Mobile app itself is NOT in this repo — only the backend/API it consumes.
-- Possible future work: `master` + `location_cascade` answer rendering in MIS reports/monitoring tables; cascade auto-population on edit of an existing record; validation of master/cascade answers on the API; field-level permissions.
+- Mobile app itself is NOT in this repo — only the backend/API it consumes. The sync notification is broadcast via `NotificationService`; the mobile client must implement a "check for new form version" flow triggered by it (API `/v1/forms` download already exists).
+- Possible future work: `master` + `location_cascade` answer rendering in MIS reports/monitoring tables; cascade auto-population on edit of an existing record; validation of master/cascade answers on the API; field-level permissions; schedule/expiry on published versions.
 
 ## Relevant Files
 
@@ -90,7 +102,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - **Core services:** `common/src/Services/SurveyService.php`, `common/src/Services/RecordService.php`, `common/src/Services/UserService.php`
 - **HTTP/Auth:** `common/src/Http/Request.php` (header fix), `common/src/Http/Router.php`, `common/src/Http/Response.php`, `common/src/Auth/SessionAuth.php`, `common/src/Auth/ApiAuth.php`
 - **API:** `api/index.php`, `api/dropdowns.php`, `api/user_data.php`, `api/Controllers/LocationController.php`, `api/Controllers/MasterController.php`, `api/Controllers/FormController.php`
-- **Builder UI:** `mis/builder/edit.php`, `mis/builder/preview.php`, `mis/builder/index.php`
+- **Builder UI:** `mis/builder/edit.php`, `mis/builder/preview.php`, `mis/builder/index.php`, `mis/builder/sync.php` (publish + notify), `mis/builder/publish.php`
 - **Admin panel:** `admin/masters.php`, `admin/dashboard.php`, `admin/settings.php`, `admin/notifications.php`, `admin/audit.php`, `admin/replication.php`, `admin/health.php`
 - **Layouts:** `common/views/layout.php` (MIS), `common/views/admin_layout.php` (admin)
 - **Tests:** `tests/smoke.php`, `tests/e2e/run.js`, `tests/e2e/lib.js`, `tests/e2e/reset.php`

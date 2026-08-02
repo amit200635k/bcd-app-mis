@@ -41,6 +41,10 @@ $categories = \App\Database\Connection::instance()->query(
 )->fetchAll();
 
 $forms = $service->listForms();
+$versionInfos = [];
+foreach ($forms as $f) {
+    $versionInfos[(int) $f['id']] = $service->versionInfo((int) $f['id']);
+}
 
 ob_start(); ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -66,10 +70,16 @@ ob_start(); ?>
             <?php if ($forms === []): ?>
                 <tr><td colspan="7" class="text-center text-muted py-4">No survey forms yet. Click "New Form" to start.</td></tr>
             <?php else: foreach ($forms as $f): ?>
+                <?php $vinfo = $versionInfos[(int) $f['id']] ?? ['published_version' => 0, 'draft_version' => 0, 'pending_changes' => false]; ?>
                 <tr>
                     <td><code><?= e($f['code']) ?></code></td>
                     <td><?= e($f['title']) ?><br><small class="text-muted"><?= e((string)($f['category_name'] ?? '')) ?></small></td>
-                    <td>v<?= (int) $f['current_version'] ?></td>
+                    <td>
+                        v<?= (int) $f['current_version'] ?>
+                        <?php if ($f['status'] === 'published' && ($vinfo['pending_changes'] ?? false)): ?>
+                        <span class="badge bg-warning text-dark" title="New draft ready to sync">v<?= (int) $vinfo['draft_version'] ?> draft</span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <?php
                         $badge = ['draft' => 'secondary', 'published' => 'success', 'archived' => 'dark'][$f['status']] ?? 'secondary';
@@ -79,9 +89,11 @@ ob_start(); ?>
                     <td><?= number_format((int) $f['record_count']) ?></td>
                     <td class="text-muted small"><?= date('d M Y', strtotime((string) $f['updated_at'])) ?></td>
                     <td class="text-end">
-                        <a href="edit.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                        <a href="edit.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit draft version"><i class="bi bi-pencil"></i></a>
                         <a href="preview.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i></a>
-                        <?php if ($f['status'] !== 'published'): ?>
+                        <?php if ($f['status'] === 'published' && ($vinfo['pending_changes'] ?? false) && $user->hasPermission('survey_builder.publish')): ?>
+                        <a href="sync.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-primary" onclick="return confirm('Publish draft v<?= (int) $vinfo['draft_version'] ?> and sync it to all web/mobile users?')"><i class="bi bi-arrow-repeat"></i></a>
+                        <?php elseif ($f['status'] !== 'published'): ?>
                         <a href="publish.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-success" onclick="return confirm('Publish this form? It becomes downloadable by surveyors.')"><i class="bi bi-rocket-takeoff"></i></a>
                         <?php endif; ?>
                     </td>

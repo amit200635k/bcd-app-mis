@@ -239,6 +239,77 @@ async function misSuite(page) {
     await waitForText(page, 'Survey Builder');
     ok('draft form appears in list', await hasText(page, code));
 
+    step('MIS: Publish draft form to live');
+    const publishClicked = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        if (!row) return false;
+        const a = row.querySelector('a[href*="publish.php"]');
+        if (!a) return false;
+        a.click();
+        return true;
+    }, code);
+    ok('publish action clicked', publishClicked);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('publish flash shown', await hasText(page, 'published. It is now available for mobile download.'));
+    await waitForText(page, 'Survey Builder');
+    const publishedRow = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        return !!row && /published/.test(row.textContent);
+    }, code);
+    ok('published status shown in list', publishedRow);
+    await assertNoPhpWarnings(page, 'builder/publish.php');
+
+    step('MIS: Edit published form (auto-clones a draft)');
+    const editClicked = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        if (!row) return false;
+        const a = row.querySelector('a[href*="edit.php"]');
+        if (!a) return false;
+        a.click();
+        return true;
+    }, code);
+    ok('edit published form opened', editClicked);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Save Structure');
+    ok('published badge shown in editor', await hasText(page, 'published v'));
+    ok('pending-changes badge shown', await hasText(page, 'pending changes'));
+    ok('Save & Sync to All button present', await page.$('#btnSaveSync') !== null);
+    await assertNoPhpWarnings(page, 'builder/edit.php (published)');
+
+    step('MIS: Save & Sync to All publishes new version');
+    const syncSaved = await page.evaluate(() => {
+        if (!state || !state[0]) return false;
+        state[0].fields.push({
+            field_key: 'e2e_synced',
+            label: 'E2E Synced Field',
+            type: 'textbox',
+            mandatory: 0,
+            options: [],
+            validations: [],
+            conditions: [],
+        });
+        document.getElementById('actionInput').value = 'save_sync';
+        document.getElementById('structureInput').value = JSON.stringify(state);
+        document.getElementById('builderForm').submit();
+        return true;
+    });
+    ok('sync field injected into draft', syncSaved);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'synced to all users');
+    ok('sync flash confirms broadcast', await hasText(page, 'synced to all users (web + mobile).'));
+    await waitForText(page, 'Survey Builder');
+    const syncedRow = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        if (!row) return false;
+        return {
+            text: row.textContent,
+            hasSyncBtn: !!row.querySelector('a[href*="sync.php"]'),
+        };
+    }, code);
+    ok('pending draft badge cleared after sync', syncedRow && !/draft/.test(syncedRow.text));
+    ok('no sync button when no pending changes', syncedRow && !syncedRow.hasSyncBtn);
+    await assertNoPhpWarnings(page, 'builder/sync.php');
+
     step('MIS: Location Masters');
     await clickText(page, 'Masters');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });

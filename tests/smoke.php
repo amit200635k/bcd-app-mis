@@ -41,6 +41,37 @@ check('Form create/version/publish', $def['form']['status'] === 'published', $de
 $locField = $def['sections'][0]['fields'][2] ?? [];
 check('Cascade field in definition', ($locField['type'] ?? '') === 'location_cascade' && in_array('village', $locField['settings']['levels'] ?? [], true));
 
+// 1b. Edit published form + sync-to-all flow
+$vi = $svc->versionInfo($formId);
+check('Version info before edit (no pending)', $vi['published_version'] >= 1 && !$vi['pending_changes'], json_encode($vi));
+
+$editVersionId = $svc->draftForEditing($formId, 1);
+$vi2 = $svc->versionInfo($formId);
+check('draftForEditing creates pending draft', $vi2['pending_changes'] && $vi2['draft_version'] > $vi['published_version'], json_encode($vi2));
+
+$editDef = $svc->formDefinition($formId, $editVersionId);
+check('Edit draft clones published structure', count($editDef['sections'] ?? []) >= 1 && count($editDef['sections'][0]['fields'] ?? []) >= 3, 'fields=' . count($editDef['sections'][0]['fields'] ?? []));
+
+$resumeId = $svc->draftForEditing($formId, 1);
+check('draftForEditing resumes existing non-empty draft', $resumeId === $editVersionId, "{$resumeId} vs {$editVersionId}");
+
+$editDef['sections'][0]['fields'][] = ['field_key' => 'sync_extra', 'label' => 'Sync Extra', 'type' => 'textbox', 'mandatory' => 0];
+$svc->saveStructure($formId, $editVersionId, $editDef['sections']);
+$publishedVersionId = $svc->publish($formId, 1, 'sync via smoke');
+$vi3 = $svc->versionInfo($formId);
+check('Sync publish bumps published version + clears pending', $vi3['published_version'] === $vi2['draft_version'] && !$vi3['pending_changes'], json_encode($vi3));
+
+$live = $svc->formDefinition($formId);
+$liveKeys = array_map(static fn($f) => (string) ($f['field_key'] ?? ''), $live['sections'][0]['fields'] ?? []);
+check('Live definition includes synced field', in_array('sync_extra', $liveKeys, true), json_encode($liveKeys));
+
+// 1c. Notification broadcast to all (web + mobile sync signal)
+$broadcastId = (new NotificationService())->send('Survey sync', 'New form version available: ' . $live['form']['code'], null, null, 1, 'info');
+$recipientCount = (int) \App\Database\Connection::instance()
+    ->query('SELECT COUNT(*) FROM notification_recipients WHERE notification_id = ' . (int) $broadcastId)
+    ->fetchColumn();
+check('Sync notification broadcast to all active users', $recipientCount >= 2, "recipients={$recipientCount}");
+
 // 2. Record upsert
 $rec = new \App\Services\RecordService();
 $out = $rec->upsert(1, [
@@ -72,7 +103,7 @@ check('Location CSV import', $stats['imported'] === 1, json_encode($stats));
 $notif = new NotificationService();
 $nid = $notif->send('Smoke', 'Test notification', null, 1, 1);
 $list = $notif->forUser(1);
-check('Notification send/deliver', $list[0]['id'] == $nid);
+check('Notification send/deliver', in_array($nid, array_column($list, 'id'), false));
 check('Unread count', $notif->unreadCount(1) >= 1);
 $notif->markRead($nid, 1);
 

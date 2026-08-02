@@ -62,6 +62,72 @@ final class SurveyService
         return (int) $pdo->lastInsertId();
     }
 
+    /**
+     * Resolve the draft version to edit. Resumes an existing non-empty draft,
+     * otherwise creates a new one cloned from the latest published structure so
+     * admins edit a working copy of the live form rather than a blank page.
+     */
+    public function draftForEditing(int $formId, int $userId): int
+    {
+        $pdo = Connection::instance();
+
+        // Latest published version (id) if any.
+        $stmt = $pdo->prepare('SELECT id FROM survey_versions WHERE form_id = :f AND status = "published" ORDER BY version DESC LIMIT 1');
+        $stmt->execute(['f' => $formId]);
+        $publishedId = (int) ($stmt->fetchColumn() ?: 0);
+
+        // Resume the latest draft only if it actually has structure.
+        $stmt = $pdo->prepare('SELECT id FROM survey_versions WHERE form_id = :f AND status = "draft" ORDER BY version DESC LIMIT 1');
+        $stmt->execute(['f' => $formId]);
+        $draftId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($draftId > 0 && $this->hasStructure($draftId)) {
+            return $draftId;
+        }
+
+        $draftId = $this->createVersion($formId, $userId, 'New edit draft');
+        if ($publishedId > 0) {
+            $def = $this->formDefinition($formId, $publishedId);
+            if ($def !== null) {
+                $this->saveStructure($formId, $draftId, $def['sections']);
+            }
+        }
+        return $draftId;
+    }
+
+    /** True if a version has at least one section. */
+    private function hasStructure(int $versionId): bool
+    {
+        $stmt = Connection::instance()->prepare('SELECT COUNT(*) FROM survey_sections WHERE form_version_id = :v');
+        $stmt->execute(['v' => $versionId]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Latest version numbers by status for a form (published + pending draft).
+     * @return array{published_version:int, draft_version:int, pending_changes:bool}
+     */
+    public function versionInfo(int $formId): array
+    {
+        $pdo = Connection::instance();
+        $rows = $pdo->prepare('SELECT status, version FROM survey_versions WHERE form_id = :f ORDER BY version DESC');
+        $rows->execute(['f' => $formId]);
+        $published = 0;
+        $draft = 0;
+        foreach ($rows->fetchAll() as $r) {
+            if ($r['status'] === 'published' && $published === 0) {
+                $published = (int) $r['version'];
+            }
+            if ($r['status'] === 'draft' && $r['version'] > $draft) {
+                $draft = (int) $r['version'];
+            }
+        }
+        return [
+            'published_version' => $published,
+            'draft_version'     => $draft,
+            'pending_changes'   => $draft > $published,
+        ];
+    }
+
     public function publish(int $formId, int $userId, ?string $note = null): int
     {
         $pdo = Connection::instance();
