@@ -52,6 +52,9 @@ $page = $page ?? '';
         <?php if ($user->hasPermission('users.manage')): ?>
         <a class="nav-link <?= $page === 'users' ? 'active' : '' ?>" href="users/index.php"><i class="bi bi-people me-2"></i>Users</a>
         <?php endif; ?>
+        <?php if ($user->isStateAdmin()): ?>
+        <a class="nav-link" href="../admin/index.php"><i class="bi bi-shield-lock me-2"></i>Admin Panel</a>
+        <?php endif; ?>
         <a class="nav-link" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
     </nav>
 </div>

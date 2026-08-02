@@ -1,0 +1,14 @@
+{
+  "name": "bcd-app-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Puppeteer end-to-end tests for BCD Survey Platform (headed Chrome)",
+  "scripts": {
+    "test": "node tests/e2e/run.js",
+    "test:mis": "node tests/e2e/run.js mis",
+    "test:admin": "node tests/e2e/run.js admin"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}
