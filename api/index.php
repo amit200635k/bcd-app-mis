@@ -37,6 +37,9 @@ $router->post('/v1/records', \App\Api\Controllers\RecordController::store(...));
 $router->get('/v1/records', \App\Api\Controllers\RecordController::index(...));
 $router->post('/v1/records/{id}/status', \App\Api\Controllers\RecordController::transition(...));
 
+// ---------- GIS ----------
+$router->get('/v1/gis/points', \App\Api\Controllers\GisController::points(...));
+
 // ---------- System ----------
 $router->get('/v1/health', \App\Api\Controllers\HealthController::check(...));
 $router->get('/v1/version', \App\Api\Controllers\HealthController::version(...));
