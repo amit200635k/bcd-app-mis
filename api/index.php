@@ -40,6 +40,12 @@ $router->post('/v1/records/{id}/status', \App\Api\Controllers\RecordController::
 // ---------- GIS ----------
 $router->get('/v1/gis/points', \App\Api\Controllers\GisController::points(...));
 
+// ---------- Notifications & System ----------
+$router->get('/v1/notifications', \App\Api\Controllers\SystemController::notifications(...));
+$router->get('/v1/notifications/unread', \App\Api\Controllers\SystemController::unreadNotifications(...));
+$router->post('/v1/notifications/{id}/read', \App\Api\Controllers\SystemController::markNotificationRead(...));
+$router->get('/v1/replication/stats', \App\Api\Controllers\SystemController::replicationStats(...));
+
 // ---------- System ----------
 $router->get('/v1/health', \App\Api\Controllers\HealthController::check(...));
 $router->get('/v1/version', \App\Api\Controllers\HealthController::version(...));

@@ -27,7 +27,8 @@ final class RecordService
         $pdo->beginTransaction();
         try {
             $uuid = (string) ($payload['record_uuid'] ?? bin2hex(random_bytes(16)));
-            $status = in_array($payload['status'] ?? 'submitted', self::STATUSES, true) ? $payload['status'] : 'submitted';
+            $requestedStatus = $payload['status'] ?? 'submitted';
+            $status = in_array($requestedStatus, self::STATUSES, true) ? $requestedStatus : 'submitted';
 
             // Existing record?
             $stmt = $pdo->prepare('SELECT * FROM survey_records WHERE record_uuid = :u LIMIT 1');
