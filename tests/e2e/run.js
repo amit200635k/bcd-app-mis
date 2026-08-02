@@ -310,6 +310,74 @@ async function misSuite(page) {
     ok('no sync button when no pending changes', syncedRow && !syncedRow.hasSyncBtn);
     await assertNoPhpWarnings(page, 'builder/sync.php');
 
+    step("MIS: Gov't Building editor loads (form 40)");
+    await page.goto(BASE + '/mis/builder/edit.php?id=40', { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.length >= 17, { timeout: 15000 });
+    const govtInfo = await page.evaluate(() => {
+        const sections = state.length;
+        const fields = state.reduce((n, s) => n + (s.fields || []).length, 0);
+        const rendered = document.querySelectorAll('[data-label]').length;
+        const dropInputs = Array.from(document.querySelectorAll('[data-options]'));
+        const masterSel = Array.from(document.querySelectorAll('[data-master]')).map((s) => s.value);
+        const casc = Array.from(document.querySelectorAll('[data-cascade]')).map((box) => Array.from(box.querySelectorAll('input[data-casc-level]:checked')).map((c) => c.dataset.cascLevel));
+        return {
+            sections, fields, rendered,
+            dropInputs: dropInputs.length,
+            dropWithOptions: dropInputs.filter((el) => el.value.trim().length > 0).length,
+            masterSel, casc,
+        };
+    });
+    ok('govt building editor loads 17 sections', govtInfo.sections === 17);
+    ok('govt building editor renders 132 fields', govtInfo.fields === 132 && govtInfo.rendered === 132);
+    ok('dropdown fields render their options', govtInfo.dropInputs >= 39 && govtInfo.dropWithOptions >= 39);
+    ok('master fields keep their master group', govtInfo.masterSel.length === 3 && govtInfo.masterSel.includes('8') && govtInfo.masterSel.includes('9'));
+    ok('location cascade shows all 4 levels', govtInfo.casc.length === 1 && govtInfo.casc[0].length === 4);
+    await assertNoPhpWarnings(page, 'builder/edit.php (govt building)');
+
+    step("MIS: Gov't Building preview renders dropdowns");
+    await page.goto(BASE + '/mis/builder/preview.php?id=40', { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => document.querySelectorAll('select').length > 0, { timeout: 10000 });
+    const previewInfo = await page.evaluate(() => {
+        const selects = Array.from(document.querySelectorAll('select'));
+        return {
+            selects: selects.length,
+            withOptions: selects.filter((s) => s.options.length > 1).length,
+            cascades: document.querySelectorAll('[data-cascade]').length,
+        };
+    });
+    ok('preview renders dropdown/master selects with options', previewInfo.selects >= 42 && previewInfo.withOptions >= 40);
+    ok('preview has location cascade block', previewInfo.cascades === 1);
+    await assertNoPhpWarnings(page, 'builder/preview.php (govt building)');
+
+    step("MIS: Gov't Building preview location cascade chains");
+    const chain = await page.evaluate(async () => {
+        const block = document.querySelector('[data-cascade]');
+        if (!block) return { ok: false, error: 'no cascade block' };
+        const sel = (level) => block.querySelector(`select[data-level="${level}"]`);
+        const count = (level) => sel(level).options.length;
+        const pick = (level) => {
+            const opt = sel(level).options[1];
+            if (!opt) return null;
+            sel(level).value = opt.value;
+            sel(level).dispatchEvent(new Event('change', { bubbles: true }));
+            return opt.value;
+        };
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const d = pick('district');
+        await wait(700);
+        const b = count('block');
+        pick('block');
+        await wait(700);
+        const p = count('panchayat');
+        pick('panchayat');
+        await wait(700);
+        const v = count('village');
+        return { ok: true, district: d, blocks: b, panchayats: p, villages: v };
+    });
+    ok('district selection populates blocks', chain.ok && chain.district && chain.blocks > 1);
+    ok('block selection populates panchayats', chain.blocks > 1 && chain.panchayats > 1);
+    ok('panchayat selection populates villages', chain.panchayats > 1 && chain.villages > 1);
+
     step('MIS: Location Masters');
     await clickText(page, 'Masters');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });

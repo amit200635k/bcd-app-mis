@@ -44,6 +44,7 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 - **`UserService::setPortals()`/`setFormAccess()` must NOT open their own transactions** — they are called inside `create()`/`update()` outer transactions (nested transactions throw "already an active transaction").
 - **Bootstrap modals opened from JS (`openModal`, `openAccess`) must call `bootstrap.Modal.getOrCreateInstance(...).show()` and should show the modal FIRST, then populate asynchronously** — showing after a fetch leaves the modal invisible during the request (flaky).
 - **E2E typing during a Bootstrap modal fade / in-flight `loadLocations()` fetch truncates typed text** in headed Chrome (e.g. `e2e_64813915` → `e2e_6481`). The `type()` helper in `tests/e2e/lib.js` now verifies the field value and retries up to 3×; tests also `waitForNetworkIdle` after opening a modal.
+- **Location cascade change-handler bug (FIXED):** `mis/builder/preview.php` re-populated the *current* select on change instead of the *next* one — selecting a district never populated blocks. Fix: a `populate(target, level, parentValue, selectedId)` helper driven from the change handler with the *next* select/level.
 - `plain_password` column on `users` is dev-only (null in production), shown as “Password (dev)” in MIS users list, stripped from `user_data.php`.
 - `seed_jharkhand.php` is idempotent (`ON DUPLICATE KEY UPDATE`); child rows re-query parent ids (never rely on `lastInsertId` with upserts).
 
@@ -96,17 +97,17 @@ Current state of the product: Phases 0–3 + parts of 5–8 of `ROADMAP.md`, plu
 
 ## E2E Harness
 
-- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 144 checks, all passing.
+- `tests/e2e/run.js` — headed Chrome (Puppeteer), resets DB at start + end. Runs `mis` and/or `admin` suites (`node tests/e2e/run.js [all|mis|admin]`). Current total: 156 checks, all passing.
 - Helpers in `tests/e2e/lib.js` (`BASE`, `CREDS`, `step/check/ok`, `clickText`, `type`, `waitForText`, `hasText`, `assertNoPhpWarnings`, `wirePage`, `summary`); dialogs auto-accepted.
 - `type()` is self-verifying: triple-clicks, types with `delay:10`, reads back the field value and retries up to 3× (headed-Chrome truncates text typed during modal animation/network load).
 - Form submits in tests go through `page.evaluate(form.submit())` (bypasses `onsubmit` confirm dialogs).
 - Puppeteer does NOT support `:has-text()`; use `page.evaluate` + `Array.from(...).find`.
-- E2E MIS suite now covers: create draft → publish → edit published (clone) → Save & Sync → verify pending badge cleared + sync button gone + broadcast flash, **create a user via modal (portal + form access), edit-user access persistence, admin Roles & Access page** (Manage modal shows portals/forms, submits, flash).
+- E2E MIS suite now covers: create draft → publish → edit published (clone) → Save & Sync → verify pending badge cleared + sync button gone + broadcast flash, **create a user via modal (portal + form access), edit-user access persistence, admin Roles & Access page** (Manage modal shows portals/forms, submits, flash), and **Gov't Building form 40** (editor loads 17 sections / 132 fields, dropdown options render, master groups persist, cascade shows 4 levels; preview renders dropdown/master selects; location cascade chains district→block→panchayat→village).
 - `tests/smoke.php` covers `draftForEditing` clone/resume, `versionInfo` pending states, sync publish bump, live definition containing the synced field, broadcast recipient count, **GOVT_BUILDING_SURVEY integrity (17 sections / 132 fields / master groups), portal + form-access helpers, state-admin implicit access, scope enforcement, block-admin role-assignment limits, assignableForms scoping**. (Note: notification "send/deliver" check asserts id presence in `forUser()` list, not index 0 — same-second ordering is nondeterministic.)
 
 ## Milestones (git history)
 
-- (pending this session) — Government Building Survey form + RBAC portal/form access + mobile API records/devices/sync endpoints (form+access commit, then mobile-API commit).
+- (this session) `abeecd0` — mobile API records/devices/sync endpoints; `9641666` — Government Building Survey form + RBAC portal/form access; `?` — fix location cascade chain in builder preview + Gov't Building E2E tests.
 - `1c55442` — edit published form + sync to all users (builder sync flow + E2E).
 - `06b5a1c` — location_cascade field type + `/v1/location/*` API + scope-aware preview + `Request::header()` fix. (previous)
 - `7641300` — master-data field type (admin CRUD, builder linkage, id+name storage) + draft-form preview.

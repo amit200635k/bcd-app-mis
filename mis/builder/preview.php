@@ -129,55 +129,45 @@ ob_start(); ?>
             scope = (await r.json()).items || {};
         } catch (e) { /* scope unknown — state admin style */ }
 
+        const populate = async (target, level, parentValue, selectedId) => {
+            if (level === 'district') {
+                await load(target, BASE + '/api/dropdowns.php?type=district', selectedId);
+                return;
+            }
+            if (!parentValue) {
+                target.innerHTML = '<option value="">— Select —</option>';
+                return;
+            }
+            await load(target, BASE + `/api/dropdowns.php?type=${level}&${qp[level]}=${parentValue}`, selectedId);
+        };
+
         for (let i = 0; i < levels.length; i++) {
             const level = levels[i];
             const sel = selects[i];
-            const fixed = scopes[level];
-            const scopedId = scope[fixed];
             const parentSel = i > 0 ? selects[i - 1] : null;
-
-            const populateFromParent = async (parentValue) => {
-                if (level === 'district') {
-                    await load(sel, BASE + '/api/dropdowns.php?type=district', scopedId);
-                    return;
-                }
-                if (!parentValue) {
-                    sel.innerHTML = '<option value="">— Select —</option>';
-                    return;
-                }
-                await load(sel, BASE + `/api/dropdowns.php?type=${level}&${qp[level]}=${parentValue}`, scopedId);
-            };
 
             sel.addEventListener('change', async () => {
                 for (let j = i + 1; j < levels.length; j++) {
-                    const next = selects[j];
-                    next.innerHTML = '<option value="">— Select —</option>';
+                    selects[j].innerHTML = '<option value="">— Select —</option>';
                 }
                 if (i + 1 < levels.length) {
-                    await populateFromParent(sel.value);
+                    await populate(selects[i + 1], levels[i + 1], sel.value, scope[scopes[levels[i + 1]]] || null);
                 }
             });
 
-            await populateFromParent(parentSel ? parentSel.value : null);
+            await populate(sel, level, parentSel ? parentSel.value : null, scope[scopes[level]] || null);
         }
 
         // If this user is scoped to a district/block, lock the topmost scoped select.
         for (let i = 0; i < levels.length; i++) {
-            const fixed = scopes[levels[i]];
-            if (scope[fixed]) {
+            const fixedId = scope[scopes[levels[i]]];
+            if (fixedId) {
                 const sel = selects[i];
-                sel.value = String(scope[fixed]);
+                sel.value = String(fixedId);
                 sel.disabled = true;
                 sel.classList.add('bg-light');
-                // populate the next level from the locked value
-                if (i + 1 < levels.length) {
-                    const next = levels[i + 1];
-                    const nextSel = selects[i + 1];
-                    await load(nextSel, BASE + `/api/dropdowns.php?type=${next}&${qp[next]}=${scope[fixed]}`);
-                    if (scope[scopes[next]] && i + 2 < levels.length) {
-                        const nnext = levels[i + 2];
-                        await load(selects[i + 2], BASE + `/api/dropdowns.php?type=${nnext}&${qp[nnext]}=${scope[scopes[next]]}`);
-                    }
+                for (let j = i + 1; j < levels.length; j++) {
+                    await populate(selects[j], levels[j], scope[scopes[levels[j - 1]]] || null, scope[scopes[levels[j]]] || null);
                 }
                 break;
             }
