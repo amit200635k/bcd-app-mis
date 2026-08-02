@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
 $definition = $service->formDefinition($formId, $versionId);
 $fieldTypes = SurveyService::FIELD_TYPES;
 $validationRules = ['required', 'regex', 'min', 'max', 'min_length', 'max_length', 'email', 'aadhaar', 'pan', 'mobile', 'pincode', 'date'];
+$masterGroups = $pdo->query('SELECT id, code, name FROM master_groups ORDER BY name')->fetchAll();
 
 ob_start(); ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -91,6 +92,7 @@ ob_start(); ?>
 <script>
 const fieldTypes = <?= json_encode($fieldTypes) ?>;
 const validationRules = <?= json_encode($validationRules) ?>;
+const masterGroups = <?= json_encode($masterGroups) ?>;
 
 // State: array of sections, each with fields.
 let state = <?= json_encode($definition['sections']) ?>;
@@ -150,6 +152,19 @@ function renderField(si, fi, field) {
         </div>`;
     }
 
+    let masterHtml = '';
+    if (field.type === 'master') {
+        masterHtml = `<div class="row g-2 align-items-center mt-1">
+            <div class="col-md-8">
+                <select class="form-select form-select-sm" data-master="${si}:${fi}">
+                    <option value="">— Select Master Group —</option>
+                    ${masterGroups.map(g => `<option value="${g.id}" ${Number((field.settings||{}).master_group_id) === Number(g.id) ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-4 text-muted small">master data group</div>
+        </div>`;
+    }
+
     div.innerHTML = `
         <div class="row g-2 align-items-center">
             <div class="col-md-4">
@@ -184,7 +199,8 @@ function renderField(si, fi, field) {
                 <div class="form-text small">validation rules</div>
             </div>
         </div>
-        ${optsHtml}`;
+        ${optsHtml}
+        ${masterHtml}`;
 
     div.querySelector(`[data-label="${si}:${fi}"]`).addEventListener('change', e => field.label = e.target.value);
     div.querySelector(`[data-key="${si}:${fi}"]`).addEventListener('change', e => field.field_key = e.target.value.replace(/\s+/g, '_'));
@@ -203,6 +219,15 @@ function renderField(si, fi, field) {
         });
         // hydrate text from stored options
         optsInput.value = (field.options || []).map(o => o.option_label).join(', ');
+    }
+    if (field.type === 'master') {
+        const msel = div.querySelector(`[data-master="${si}:${fi}"]`);
+        if (msel) {
+            msel.addEventListener('change', e => {
+                field.settings = field.settings || {};
+                field.settings.master_group_id = e.target.value ? Number(e.target.value) : null;
+            });
+        }
     }
     return div;
 }

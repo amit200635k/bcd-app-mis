@@ -36,6 +36,7 @@ $page = $page ?? '';
         <a class="nav-link <?= $page === 'settings' ? 'active' : '' ?>" href="settings.php"><i class="bi bi-gear me-2"></i>Settings</a>
         <a class="nav-link <?= $page === 'notifications' ? 'active' : '' ?>" href="notifications.php"><i class="bi bi-bell me-2"></i>Notifications</a>
         <a class="nav-link <?= $page === 'audit' ? 'active' : '' ?>" href="audit.php"><i class="bi bi-journal-text me-2"></i>Audit Logs</a>
+        <a class="nav-link <?= $page === 'masters' ? 'active' : '' ?>" href="masters.php"><i class="bi bi-database me-2"></i>Master Data</a>
         <a class="nav-link <?= $page === 'replication' ? 'active' : '' ?>" href="replication.php"><i class="bi bi-arrow-repeat me-2"></i>Replication</a>
         <a class="nav-link <?= $page === 'health' ? 'active' : '' ?>" href="health.php"><i class="bi bi-heart-pulse me-2"></i>System Health</a>
         <hr class="my-2 border-secondary">

@@ -79,9 +79,9 @@ final class RecordService
         }
         $pdo = Connection::instance();
 
-        // Preload field map: field_key -> (id, type)
+        // Preload field map: field_key -> (id, type, settings)
         $fields = [];
-        $rows = $pdo->query('SELECT id, field_key, type FROM survey_fields')->fetchAll();
+        $rows = $pdo->query('SELECT id, field_key, type, settings_json FROM survey_fields')->fetchAll();
         foreach ($rows as $r) {
             $fields[$r['field_key']] = $r;
         }
@@ -96,8 +96,13 @@ final class RecordService
             $field = $fields[$key] ?? null;
             $fieldId = $field !== null ? (int) $field['id'] : 0;
             $fieldType = $field['type'] ?? 'textbox';
+            $settings = $field !== null ? json_decode((string) $field['settings_json'], true) : null;
 
-            [$text, $num, $date, $json] = $this->normalizeValue($fieldType, $value);
+            if ($fieldType === 'master') {
+                [$text, $num, $date, $json] = $this->normalizeMaster((array) ($settings ?? []), $value);
+            } else {
+                [$text, $num, $date, $json] = $this->normalizeValue($fieldType, $value);
+            }
 
             $stmt->execute([
                 'rid' => $recordId,
@@ -127,6 +132,49 @@ final class RecordService
             return [null, null, $value !== '' ? (string) $value : null, null];
         }
         return [(string) $value, null, null, null];
+    }
+
+    /**
+     * Master-data answer: persist both the selected master item id and its name.
+     * @return array{?string, ?string, ?string, ?string} [text=name, null, null, json={master_id,name}]
+     */
+    private function normalizeMaster(array $settings, mixed $value): array
+    {
+        $groupId = (int) ($settings['master_group_id'] ?? 0);
+        $masterId = null;
+        $name = '';
+
+        if (is_array($value)) {
+            $masterId = (int) ($value['master_id'] ?? $value['id'] ?? 0);
+            $name = trim((string) ($value['name'] ?? $value['option_label'] ?? ''));
+        } else {
+            $name = trim((string) ($value ?? ''));
+            if ($name !== '' && ctype_digit($name)) {
+                $masterId = (int) $name;
+            }
+        }
+
+        if ($groupId > 0) {
+            $pdo = Connection::instance();
+            if ($masterId > 0) {
+                $stmt = $pdo->prepare('SELECT name FROM master_items WHERE id = :i AND group_id = :g AND is_active = 1 LIMIT 1');
+                $stmt->execute(['i' => $masterId, 'g' => $groupId]);
+                $found = $stmt->fetchColumn();
+                if ($found !== false) {
+                    $name = (string) $found;
+                }
+            } elseif ($name !== '') {
+                $stmt = $pdo->prepare('SELECT id FROM master_items WHERE name = :n AND group_id = :g AND is_active = 1 LIMIT 1');
+                $stmt->execute(['n' => $name, 'g' => $groupId]);
+                $found = $stmt->fetchColumn();
+                if ($found !== false) {
+                    $masterId = (int) $found;
+                }
+            }
+        }
+
+        $json = json_encode(['master_id' => $masterId, 'name' => $name !== '' ? $name : null]);
+        return [$name !== '' ? $name : null, null, null, $json];
     }
 
     private function saveGps(int $recordId, int $userId, array $gps): void

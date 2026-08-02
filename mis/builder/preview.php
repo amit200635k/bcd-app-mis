@@ -60,7 +60,8 @@ ob_start(); ?>
                             case 'decimal': echo '<input type="number" step="' . ($field['type'] === 'decimal' ? '0.01' : '1') . '" class="form-control" placeholder="' . e($field['placeholder'] ?? '') . '" ' . $required . '>'; break;
                             case 'date': echo '<input type="date" class="form-control" ' . $required . '>'; break;
                             case 'time': echo '<input type="time" class="form-control" ' . $required . '>'; break;
-                            case 'dropdown': echo '<select class="form-select" ' . $required . '><option value="">— Select —</option>' . implode('', array_map(fn($o) => '<option>' . e($o['option_label']) . '</option>', $field['options'])) . '</select>'; break;
+                            case 'dropdown':
+                            case 'master': echo '<select class="form-select" ' . $required . '><option value="">— Select —</option>' . implode('', array_map(fn($o) => '<option value="' . e($o['option_value']) . '">' . e($o['option_label']) . '</option>', $field['options'])) . '</select>'; break;
                             case 'radio': foreach ($field['options'] as $o) { echo '<div class="form-check"><input class="form-check-input" type="radio" name="preview_' . e($field['id']) . '" ' . $required . '><label class="form-check-label">' . e($o['option_label']) . '</label></div>'; } break;
                             case 'checkbox':
                             case 'multi_select': foreach ($field['options'] as $o) { echo '<div class="form-check"><input class="form-check-input" type="checkbox" ' . $required . '><label class="form-check-label">' . e($o['option_label']) . '</label></div>'; } break;

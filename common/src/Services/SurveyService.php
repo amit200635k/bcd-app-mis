@@ -16,7 +16,7 @@ final class SurveyService
     /** @var list<string> */
     public const FIELD_TYPES = [
         'textbox', 'textarea', 'number', 'decimal', 'date', 'time',
-        'dropdown', 'radio', 'checkbox', 'multi_select', 'gps', 'camera',
+        'dropdown', 'radio', 'checkbox', 'multi_select', 'master', 'gps', 'camera',
         'signature', 'barcode', 'qr_code', 'file_upload', 'heading', 'auto_number',
     ];
 
@@ -119,11 +119,20 @@ final class SurveyService
         }
 
         if ($versionId === null) {
+            // Prefer the published version; fall back to the latest draft so
+            // draft forms can be previewed too.
             $stmt = $pdo->prepare(
                 'SELECT id FROM survey_versions WHERE form_id = :f AND status = "published" ORDER BY version DESC LIMIT 1'
             );
             $stmt->execute(['f' => $formId]);
             $versionId = (int) ($stmt->fetchColumn() ?: 0);
+            if ($versionId === 0) {
+                $stmt = $pdo->prepare(
+                    'SELECT id FROM survey_versions WHERE form_id = :f AND status = "draft" ORDER BY version DESC LIMIT 1'
+                );
+                $stmt->execute(['f' => $formId]);
+                $versionId = (int) ($stmt->fetchColumn() ?: 0);
+            }
         }
 
         $sections = $this->sections((int) $versionId);
@@ -176,6 +185,29 @@ final class SurveyService
 
             if (isset($field['settings_json'])) {
                 $fields[$i]['settings'] = json_decode((string) $field['settings_json'], true);
+            }
+
+            // Master-data fields: resolve items from the linked master group.
+            if ($field['type'] === 'master') {
+                $settings = $fields[$i]['settings'] ?? [];
+                $groupId = (int) ($settings['master_group_id'] ?? 0);
+                $fields[$i]['master_group_id'] = $groupId > 0 ? $groupId : null;
+                $fields[$i]['master_group_name'] = null;
+                if ($groupId > 0) {
+                    $stmt = $pdo->prepare('SELECT name FROM master_groups WHERE id = :g');
+                    $stmt->execute(['g' => $groupId]);
+                    $fields[$i]['master_group_name'] = $stmt->fetchColumn() ?: null;
+
+                    $stmt = $pdo->prepare(
+                        'SELECT id, name FROM master_items WHERE group_id = :g AND is_active = 1 ORDER BY sort_order, name'
+                    );
+                    $stmt->execute(['g' => $groupId]);
+                    $items = $stmt->fetchAll();
+                    $fields[$i]['options'] = array_map(
+                        static fn (array $m) => ['option_label' => $m['name'], 'option_value' => (string) $m['id']],
+                        $items
+                    );
+                }
             }
         }
         return $fields;

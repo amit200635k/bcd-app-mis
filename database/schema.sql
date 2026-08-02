@@ -294,7 +294,7 @@ CREATE TABLE `survey_fields` (
   `section_id`     INT UNSIGNED NOT NULL,
   `field_key`      VARCHAR(100) NOT NULL,
   `label`          VARCHAR(200) NOT NULL,
-  `type`           ENUM('textbox','textarea','number','decimal','date','time','dropdown','radio','checkbox','multi_select','gps','camera','signature','barcode','qr_code','file_upload','heading','auto_number')
+  `type`           ENUM('textbox','textarea','number','decimal','date','time','dropdown','radio','checkbox','multi_select','master','gps','camera','signature','barcode','qr_code','file_upload','heading','auto_number')
                    NOT NULL,
   `is_mandatory`   TINYINT(1)   NOT NULL DEFAULT 0,
   `placeholder`    VARCHAR(255) NULL,
@@ -472,6 +472,7 @@ CREATE TABLE `master_items` (
   `extra_json` JSON         NULL,
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_master_items_group_code` (`group_id`, `code`),
   KEY `idx_master_items_group` (`group_id`),
   KEY `idx_master_items_parent` (`parent_id`),
   CONSTRAINT `fk_master_group` FOREIGN KEY (`group_id`)  REFERENCES `master_groups` (`id`) ON DELETE CASCADE,

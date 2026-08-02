@@ -34,6 +34,9 @@ try {
 
     $pdo->exec("DELETE FROM settings WHERE setting_key LIKE 'test.%'");
 
+    // E2E master-data artifacts (items cascade on group delete).
+    $pdo->exec("DELETE FROM master_groups WHERE code LIKE 'E2E_GRP_%'");
+
     $pdo->exec(
         "DELETE FROM notification_recipients WHERE notification_id IN (SELECT id FROM notifications WHERE title LIKE 'E2E-%')"
     );

@@ -82,28 +82,28 @@ try {
     $stmt->execute(['c' => 'JH', 'n' => 'Jharkhand']);
     $stateId = (int) $pdo->query("SELECT id FROM states WHERE code = 'JH'")->fetchColumn();
 
-    $districtStmt = $pdo->prepare('INSERT INTO districts (state_id, code, name, short_name) VALUES (:s, :c, :n, :sn)');
-    $blockStmt = $pdo->prepare('INSERT INTO blocks (district_id, code, name) VALUES (:d, :c, :n)');
-    $panchayatStmt = $pdo->prepare('INSERT INTO panchayats (block_id, code, name) VALUES (:b, :c, :n)');
-    $villageStmt = $pdo->prepare('INSERT INTO villages (panchayat_id, code, name) VALUES (:p, :c, :n)');
+    $districtStmt = $pdo->prepare('INSERT INTO districts (state_id, code, name, short_name) VALUES (:s, :c, :n, :sn) ON DUPLICATE KEY UPDATE name = VALUES(name), short_name = VALUES(short_name), state_id = VALUES(state_id)');
+    $blockStmt = $pdo->prepare('INSERT INTO blocks (district_id, code, name) VALUES (:d, :c, :n) ON DUPLICATE KEY UPDATE name = VALUES(name), district_id = VALUES(district_id)');
+    $panchayatStmt = $pdo->prepare('INSERT INTO panchayats (block_id, code, name) VALUES (:b, :c, :n) ON DUPLICATE KEY UPDATE name = VALUES(name), block_id = VALUES(block_id)');
+    $villageStmt = $pdo->prepare('INSERT INTO villages (panchayat_id, code, name) VALUES (:p, :c, :n) ON DUPLICATE KEY UPDATE name = VALUES(name), panchayat_id = VALUES(panchayat_id)');
 
     $counts = ['district' => 0, 'block' => 0, 'panchayat' => 0, 'village' => 0];
 
     foreach ($districts as $code => $name) {
         $districtStmt->execute(['s' => $stateId, 'c' => 'JH-' . $code, 'n' => $name, 'sn' => $name]);
-        $districtId = (int) $pdo->lastInsertId();
+        $districtId = (int) $pdo->query("SELECT id FROM districts WHERE code = 'JH-" . $code . "'")->fetchColumn();
         $counts['district']++;
 
         foreach ($blocksByDistrict[$code] as $bi => $blockName) {
             $blockStmt->execute(['d' => $districtId, 'c' => 'JH-' . $code . '-B' . ($bi + 1), 'n' => $blockName]);
-            $blockId = (int) $pdo->lastInsertId();
+            $blockId = (int) $pdo->query("SELECT id FROM blocks WHERE code = 'JH-" . $code . "-B" . ($bi + 1) . "'")->fetchColumn();
             $counts['block']++;
 
             // 3 panchayats per block
             for ($pi = 1; $pi <= 3; $pi++) {
                 $panchayatName = $blockName . ' ' . $panchayatNames[($pi - 1) % count($panchayatNames)];
                 $panchayatStmt->execute(['b' => $blockId, 'c' => 'JH-' . $code . '-P' . ($bi + 1) . '-' . $pi, 'n' => $panchayatName]);
-                $panchayatId = (int) $pdo->lastInsertId();
+                $panchayatId = (int) $pdo->query("SELECT id FROM panchayats WHERE code = 'JH-" . $code . "-P" . ($bi + 1) . "-" . $pi . "'")->fetchColumn();
                 $counts['panchayat']++;
 
                 // 4 villages per panchayat
@@ -121,8 +121,36 @@ try {
     foreach ($counts as $k => $v) {
         printf("  %-10s %d" . PHP_EOL, $k, $v);
     }
+
+    syncDistrictMasterItems($pdo);
 } catch (Throwable $e) {
     $pdo->rollBack();
     fwrite(STDERR, 'Seeding failed: ' . $e->getMessage() . PHP_EOL);
     exit(1);
+}
+
+/**
+ * Keep the DISTRICT master group in sync with the districts table so the
+ * survey builder can link a "master" field to it.
+ */
+function syncDistrictMasterItems(PDO $pdo): void
+{
+    $pdo->exec(
+        'INSERT INTO master_groups (code, name, is_system)
+         VALUES ("DISTRICT", "District", 1)
+         ON DUPLICATE KEY UPDATE name = VALUES(name)'
+    );
+    $groupId = (int) $pdo->query("SELECT id FROM master_groups WHERE code = 'DISTRICT'")->fetchColumn();
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO master_items (group_id, code, name) VALUES (:g, :c, :n)
+         ON DUPLICATE KEY UPDATE name = VALUES(name)'
+    );
+    $districts = $pdo->query('SELECT code, name FROM districts ORDER BY name')->fetchAll();
+    $count = 0;
+    foreach ($districts as $d) {
+        $stmt->execute(['g' => $groupId, 'c' => $d['code'], 'n' => $d['name']]);
+        $count++;
+    }
+    printf("  %-10s %d" . PHP_EOL, 'master_items', $count);
 }

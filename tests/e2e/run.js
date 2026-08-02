@@ -148,8 +148,56 @@ async function misSuite(page) {
     ok('dropdown field persists after reload', persists);
     await assertNoPhpWarnings(page, 'builder/edit.php');
 
+    step('MIS: Save master-data field linked to DISTRICT group');
+    const masterSaved = await page.evaluate(() => {
+        if (!state || !state[0]) return false;
+        state[0].fields.push({
+            field_key: 'e2e_district',
+            label: 'E2E District',
+            type: 'master',
+            mandatory: 0,
+            settings: { master_group_id: 1 },
+            options: [],
+            validations: [],
+            conditions: [],
+        });
+        document.getElementById('structureInput').value = JSON.stringify(state);
+        document.getElementById('builderForm').submit();
+        return true;
+    });
+    ok('master field injected into state', masterSaved);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Save Structure');
+    ok('master structure saved without error', await hasText(page, 'Form structure saved.'));
+    const masterPersists = await page.evaluate(() => {
+        const sel = document.querySelector('[data-master="0:1"]');
+        return !!sel && sel.value === '1';
+    });
+    ok('master group selection persists after reload', masterPersists);
+    await assertNoPhpWarnings(page, 'builder/edit.php');
+
+    step('MIS: Preview draft form (no published version)');
     await clickText(page, 'Back');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    const draftPreview = await page.evaluate((code) => {
+        const row = Array.from(document.querySelectorAll('tr')).find(
+            (tr) => tr.textContent.includes(code)
+        );
+        if (!row) return false;
+        const a = row.querySelector('a[href*="preview.php"]');
+        if (!a) return false;
+        a.click();
+        return true;
+    }, code);
+    ok('draft form preview link clicked', draftPreview);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'E2E District');
+    ok('draft preview renders master field', await hasText(page, 'E2E District'));
+    ok('draft preview lists district items', await hasText(page, 'Ranchi'));
+    await assertNoPhpWarnings(page, 'builder/preview.php (draft)');
+
+    await page.goto(BASE + '/mis/builder/index.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Survey Builder');
     ok('draft form appears in list', await hasText(page, code));
 
     step('MIS: Location Masters');
@@ -352,6 +400,102 @@ async function adminSuite(page) {
     ok('database connected', await hasText(page, 'connected'));
     ok('shows PHP version', await hasText(page, '8.2'));
     await assertNoPhpWarnings(page, 'admin/health.php');
+
+    step('ADMIN: Master Data page');
+    await page.goto(BASE + '/admin/masters.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Master Data');
+    ok('master data nav link present', await hasText(page, 'Master Data'));
+    ok('DISTRICT group listed', await hasText(page, 'DISTRICT'));
+    ok('24 district items counted', await hasText(page, '24'));
+    await assertNoPhpWarnings(page, 'admin/masters.php');
+
+    step('ADMIN: Create master group + add item');
+    const grpCode = 'E2E_GRP_' + Date.now().toString().slice(-6);
+    const grpName = 'E2E Group ' + Date.now().toString().slice(-6);
+    await type(page, 'input[name=code]', grpCode);
+    await type(page, 'input[name=name]', grpName);
+    const grpSubmitted = await page.evaluate(() => {
+        const form = Array.from(document.querySelectorAll('form')).find((f) => {
+            const a = f.querySelector('input[name=action]');
+            return a && a.value === 'create_group';
+        });
+        if (!form) return false;
+        form.submit();
+        return true;
+    });
+    ok('create group form submitted', grpSubmitted);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('group created flash', await hasText(page, 'Master group created.'));
+    ok('group appears in list', await hasText(page, grpName));
+    await assertNoPhpWarnings(page, 'admin/masters.php (after create)');
+
+    const openGroup = await page.evaluate((name) => {
+        const a = Array.from(document.querySelectorAll('a')).find(
+            (x) => x.textContent.trim() === name
+        );
+        if (a) { a.click(); return true; }
+        return false;
+    }, grpName);
+    ok('navigated into new group', openGroup);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Add Item');
+    const itemNamed = await page.evaluate(() => {
+        const form = Array.from(document.querySelectorAll('form')).find((f) => {
+            const a = f.querySelector('input[name=action]');
+            return a && a.value === 'add_item';
+        });
+        const input = form && form.querySelector('input[name=name]');
+        if (!input) return false;
+        input.value = 'E2E Item Alpha';
+        return true;
+    });
+    ok('add item name filled', itemNamed);
+    const itemSubmitted = await page.evaluate(() => {
+        const form = Array.from(document.querySelectorAll('form')).find((f) => {
+            const a = f.querySelector('input[name=action]');
+            return a && a.value === 'add_item';
+        });
+        if (!form) return false;
+        form.submit();
+        return true;
+    });
+    ok('add item form submitted', itemSubmitted);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('item added flash', await hasText(page, 'Master item added.'));
+    ok('item appears in items table', await hasText(page, 'E2E Item Alpha'));
+
+    step('ADMIN: Delete master item');
+    const delItem = await page.evaluate(() => {
+        const row = Array.from(document.querySelectorAll('tr')).find(
+            (tr) => tr.textContent.includes('E2E Item Alpha')
+        );
+        if (!row) return false;
+        const form = row.querySelector('form input[name=action][value=delete_item]')?.closest('form');
+        if (!form) return false;
+        form.submit();
+        return true;
+    });
+    ok('delete item form submitted', delItem);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('item removed after delete', !(await hasText(page, 'E2E Item Alpha')));
+
+    step('ADMIN: Delete master group');
+    await page.goto(BASE + '/admin/masters.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Master Data');
+    const delGrp = await page.evaluate((name) => {
+        const row = Array.from(document.querySelectorAll('tr')).find(
+            (tr) => tr.textContent.includes(name)
+        );
+        if (!row) return false;
+        const form = row.querySelector('form input[name=action][value=delete_group]')?.closest('form');
+        if (!form) return false;
+        form.submit();
+        return true;
+    }, grpName);
+    ok('delete group form submitted', delGrp);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    ok('group removed after delete', !(await hasText(page, grpName)));
+    await assertNoPhpWarnings(page, 'admin/masters.php (after delete)');
 }
 
 /* ============================== MAIN ============================== */
