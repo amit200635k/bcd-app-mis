@@ -14,7 +14,7 @@ final class GisController
     /** Survey records with GPS coordinates for map layers. */
     public static function points(): never
     {
-        ApiAuth::requireAuth();
+        $user = ApiAuth::requireAuth();
         $pdo = Connection::instance();
 
         $formId = Request::query('form_id') !== null ? (int) Request::query('form_id') : null;
@@ -29,6 +29,14 @@ final class GisController
         if ($status !== '') {
             $where .= ' AND r.status = :s';
             $params['s'] = $status;
+        }
+        // Data scope: viewers only see their own + sub-users' points.
+        if (!$user->isStateAdmin()) {
+            $ids = \App\Services\RecordService::scopeUserIds($user);
+            if ($ids === []) {
+                $ids = [$user->id()];
+            }
+            $where .= ' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')';
         }
 
         $stmt = $pdo->prepare(

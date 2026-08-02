@@ -58,11 +58,20 @@ FROM `roles` r JOIN `permissions` p ON p.`code` IN
 WHERE r.`code` = 'surveyor';
 
 -- Hierarchy admins (district/block/panchayat/village) manage users within their scope
+-- and view survey data (own + sub-users; scope-filtered server-side)
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT r.`id`, p.`id`
 FROM `roles` r JOIN `permissions` p ON p.`code` IN
-  ('dashboard.view','users.view','users.manage')
+  ('dashboard.view','users.view','users.manage',
+   'monitoring.view','reports.view','reports.export','gis.view')
 WHERE r.`code` IN ('district','block','panchayat','village');
+
+-- surveyor additionally reads survey data within their scope
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM `roles` r JOIN `permissions` p ON p.`code` IN
+  ('monitoring.view','reports.view','gis.view')
+WHERE r.`code` = 'surveyor';
 
 -- A default state (used by deployments within a state)
 INSERT INTO `states` (`code`, `name`) VALUES

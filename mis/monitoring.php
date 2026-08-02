@@ -28,6 +28,15 @@ if (in_array($action, ['verify', 'approve', 'publish', 'reject'], true)) {
         'reject'  => 'rejected',
     };
     try {
+        $record = $recordService->find($recordId);
+        if ($record === null) {
+            flash('error', 'Record not found.');
+            redirect('mis/monitoring.php');
+        }
+        if (!$recordService->canView($user, $record)) {
+            flash('error', 'You do not have access to this record.');
+            redirect('mis/monitoring.php');
+        }
         $recordService->transition($recordId, $user->id(), $toStatus, $remark);
         flash('success', "Record marked as {$toStatus}.");
     } catch (Throwable $e) {
@@ -40,8 +49,11 @@ $formId = (int) ($_GET['form_id'] ?? 0);
 $status = (string) ($_GET['status'] ?? 'submitted');
 $page = max(1, (int) ($_GET['page'] ?? 1));
 
-$result = $recordService->listRecords($formId ?: null, $status, $page, 25);
-$forms = $pdo->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll();
+$result = $recordService->listRecords($formId ?: null, $status, $page, 25, $user);
+$forms = array_values(array_filter(
+    $pdo->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll(),
+    fn(array $f) => $user->canAccessForm((int) $f['id'])
+));
 
 ob_start(); ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -108,6 +120,7 @@ ob_start(); ?>
                     </td>
                     <td class="text-muted small"><?= date('d M H:i', strtotime((string) $r['updated_at'])) ?></td>
                     <td class="text-end">
+                        <a class="btn btn-sm btn-outline-secondary" href="records.php?id=<?= (int) $r['id'] ?>"><i class="bi bi-eye"></i> View</a>
                         <?php if ($user->hasPermission('approval.verify') && $r['status'] === 'submitted'): ?>
                         <form method="post" class="d-inline" onsubmit="return confirm('Verify this record?')">
                             <input type="hidden" name="action" value="verify">

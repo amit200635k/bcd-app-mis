@@ -78,6 +78,18 @@ try {
     );
     $pdo->exec("DELETE FROM survey_forms WHERE code LIKE 'SMOKE_%'");
 
+    // Smoke-scope users (created to verify data-scope filtering).
+    $pdo->exec(
+        "DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'SMOKE_%')"
+    );
+    $pdo->exec(
+        "DELETE FROM user_portal_access WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'SMOKE_%')"
+    );
+    $pdo->exec(
+        "DELETE FROM user_form_access WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'SMOKE_%')"
+    );
+    $pdo->exec("DELETE FROM users WHERE username LIKE 'SMOKE_%'");
+
     $pdo->exec(
         "DELETE FROM notification_recipients WHERE notification_id IN (SELECT id FROM notifications WHERE title = 'Smoke')"
     );

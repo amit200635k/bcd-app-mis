@@ -447,24 +447,46 @@ async function misSuite(page) {
     ok('block selection populates panchayats', chain.blocks > 1 && chain.panchayats > 1);
     ok('panchayat selection populates villages', chain.panchayats > 1 && chain.villages > 1);
 
-    step('MIS: Location Masters');
+    step('MIS: Masters lists all master types + add-master link');
     await clickText(page, 'Masters');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
-    await waitForText(page, 'Location Masters');
+    await waitForText(page, 'Master Groups');
     ok('masters page loads', await hasText(page, 'Import CSV'));
+    ok('all master groups listed', await hasText(page, 'DEPARTMENT') && await hasText(page, 'BUILDING_SUBCATEGORY'));
+    ok('new master group button present', await hasText(page, 'New Master Group'));
     ok('Jharkhand districts seeded', await hasText(page, 'Ranchi'));
     await assertNoPhpWarnings(page, 'masters/index.php');
 
-    step('MIS: Monitoring');
+    step('MIS: Monitoring shows submitter + view link');
     await clickText(page, 'Monitoring');
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
     await waitForText(page, 'Survey Monitoring');
     ok('monitoring page loads', await hasText(page, 'Submitted'));
+    ok('monitoring shows surveyor name', await hasText(page, 'Ravi Kumar'));
+    const viewLink = await page.evaluate(() => !!document.querySelector('a[href*="records.php?id="]'));
+    ok('monitoring has record view link', viewLink);
     const verifyVisible = await page.evaluate(() =>
         Array.from(document.querySelectorAll('button')).some((b) => b.textContent.trim() === 'Verify')
     );
     ok('verify button available on submitted records', verifyVisible);
     await assertNoPhpWarnings(page, 'monitoring.php');
+
+    step('MIS: View submitted record detail');
+    const openedDetail = await page.evaluate(() => {
+        const a = document.querySelector('a[href*="records.php?id="]');
+        if (!a) return false;
+        a.click();
+        return true;
+    });
+    ok('record view link opened', openedDetail);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Record Detail');
+    ok('record detail shows answers', await hasText(page, 'Landowner Name') && await hasText(page, 'Ravi Kumar'));
+    ok('record detail shows submitter + status', await hasText(page, 'Submitted by') && await hasText(page, 'Submitted'));
+    await assertNoPhpWarnings(page, 'records.php');
+    await clickText(page, 'Back to Monitoring');
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'Survey Monitoring');
 
     step('MIS: Verify a record (workflow action)');
     const clickedVerify = await page.evaluate(() => {

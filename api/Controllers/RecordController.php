@@ -56,16 +56,16 @@ final class RecordController
         }
     }
 
-    /** List records. */
+    /** List records (scoped to the caller). */
     public static function index(): never
     {
-        ApiAuth::requireAuth();
+        $user = ApiAuth::requireAuth();
         $page = max(1, (int) Request::query('page', 1));
         $perPage = min(100, max(1, (int) Request::query('per_page', 50)));
         $formId = Request::query('form_id') !== null ? (int) Request::query('form_id') : null;
         $status = (string) Request::query('status', '');
 
-        Response::ok(self::service()->listRecords($formId, $status, $page, $perPage));
+        Response::ok(self::service()->listRecords($formId, $status, $page, $perPage, $user));
     }
 
     /** Transition a record's workflow status. */
@@ -76,7 +76,15 @@ final class RecordController
         $remark = Request::input('remark');
 
         try {
-            self::service()->transition((int) $params['id'], $user->id(), $toStatus, $remark);
+            $svc = self::service();
+            $record = $svc->find((int) $params['id']);
+            if ($record === null) {
+                Response::notFound('Record not found.');
+            }
+            if (!$svc->canView($user, $record)) {
+                Response::forbidden('You do not have access to this record.');
+            }
+            $svc->transition((int) $params['id'], $user->id(), $toStatus, $remark);
             Response::ok(['message' => 'Status updated.', 'status' => $toStatus]);
         } catch (\Throwable $e) {
             Response::error($e->getMessage(), 422);
@@ -99,6 +107,9 @@ final class RecordController
         }
         if (!$user->canAccessForm((int) $record['form_id'])) {
             Response::forbidden('You do not have access to this record\'s survey form.');
+        }
+        if (!self::service()->canView($user, $record)) {
+            Response::forbidden('You do not have access to this record.');
         }
 
         $answers = $pdo->prepare('SELECT field_key, value_text, value_number, value_date, value_json FROM survey_answers WHERE record_id = :id');
@@ -129,10 +140,23 @@ final class RecordController
         if (!$user->canAccessForm((int) $record['form_id'])) {
             Response::forbidden('You do not have access to this record\'s survey form.');
         }
+        if (!self::service()->canView($user, $record)) {
+            Response::forbidden('You do not have access to this record.');
+        }
 
         $category = (string) Request::input('category', 'photo');
         if (!in_array($category, ['photo', 'signature', 'file', 'barcode', 'qr'], true)) {
             $category = 'photo';
+        }
+
+        // Optional association: the answer this file belongs to. When only a
+        // field_key is given, resolve it to the answer id for this record.
+        $fieldKey = Request::input('field_key');
+        $answerId = Request::input('answer_id') !== null ? (int) Request::input('answer_id') : null;
+        if ($answerId === null && $fieldKey !== null) {
+            $stmt = $pdo->prepare('SELECT id FROM survey_answers WHERE record_id = :rid AND field_key = :k LIMIT 1');
+            $stmt->execute(['rid' => $recordId, 'k' => (string) $fieldKey]);
+            $answerId = (int) ($stmt->fetchColumn() ?: 0);
         }
 
         if (empty($_FILES['files']) || !is_array($_FILES['files']['name'])) {
@@ -147,8 +171,8 @@ final class RecordController
 
         $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/json'];
         $insert = $pdo->prepare(
-            'INSERT INTO survey_images (record_id, file_path, original_name, mime_type, size_bytes, category)
-             VALUES (:rid, :path, :name, :mime, :size, :cat)'
+            'INSERT INTO survey_images (record_id, answer_id, file_path, original_name, mime_type, size_bytes, category)
+             VALUES (:rid, :aid, :path, :name, :mime, :size, :cat)'
         );
 
         foreach ($_FILES['files']['name'] as $i => $name) {
@@ -173,13 +197,29 @@ final class RecordController
             $size = (int) ($_FILES['files']['size'][$i] ?? 0);
             $insert->execute([
                 'rid'  => $recordId,
+                'aid'  => $answerId > 0 ? $answerId : null,
                 'path' => 'uploads/survey/' . $recordId . '/' . $filename,
                 'name' => (string) $name,
                 'mime' => $mime,
                 'size' => $size,
                 'cat'  => $category,
             ]);
-            $saved[] = ['id' => (int) $pdo->lastInsertId(), 'file_path' => 'uploads/survey/' . $recordId . '/' . $filename];
+            $imageId = (int) $pdo->lastInsertId();
+            $relPath = 'uploads/survey/' . $recordId . '/' . $filename;
+            $saved[] = ['id' => $imageId, 'file_path' => $relPath, 'answer_id' => $answerId > 0 ? $answerId : null];
+
+            // Reflect the stored file on the linked answer (if any) so photo
+            // fields carry a resolvable path to the persisted file.
+            if ($answerId > 0) {
+                $meta = json_encode([
+                    'image_id' => $imageId,
+                    'file_path' => $relPath,
+                    'original_name' => (string) $name,
+                    'category' => $category,
+                ]);
+                $pdo->prepare('UPDATE survey_answers SET value_json = :j WHERE id = :id')
+                    ->execute(['j' => $meta, 'id' => $answerId]);
+            }
         }
 
         if ($saved === []) {

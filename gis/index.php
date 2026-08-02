@@ -12,7 +12,10 @@ SessionAuth::requirePermission('gis.view');
 
 $user = SessionAuth::user();
 $pdo = Connection::instance();
-$forms = $pdo->query('SELECT id, title FROM survey_forms WHERE status = "published" ORDER BY title')->fetchAll();
+$forms = array_values(array_filter(
+    $pdo->query('SELECT id, title FROM survey_forms WHERE status = "published" ORDER BY title')->fetchAll(),
+    fn(array $f) => $user->canAccessForm((int) $f['id'])
+));
 
 ob_start(); ?>
 <div class="d-flex justify-content-between align-items-center mb-4">

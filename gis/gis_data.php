@@ -14,6 +14,7 @@ use App\Database\Connection;
 SessionAuth::requireAuth();
 SessionAuth::requirePermission('gis.view');
 
+$user = SessionAuth::user();
 $pdo = Connection::instance();
 
 $formId = (int) ($_GET['form_id'] ?? 0);
@@ -28,6 +29,14 @@ if ($formId > 0) {
 if ($status !== '') {
     $where .= ' AND r.status = :s';
     $params['s'] = $status;
+}
+// Data scope: viewers only see their own + sub-users' points.
+if (!$user->isStateAdmin()) {
+    $ids = \App\Services\RecordService::scopeUserIds($user);
+    if ($ids === []) {
+        $ids = [$user->id()];
+    }
+    $where .= ' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')';
 }
 
 $stmt = $pdo->prepare(

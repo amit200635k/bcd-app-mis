@@ -27,11 +27,11 @@ if (($_GET['export'] ?? '') === 'csv') {
     ];
     [$name, $headers] = $map[$report] ?? $map['survey_wise'];
     $rows = match ($report) {
-        'user_wise' => $service->userWise($formId ?: null),
-        'district_wise' => $service->districtWise($formId ?: null),
-        'gps_missing' => $service->gpsMissing($formId ?: null),
-        'duplicates' => $service->duplicates(),
-        default => $service->surveyWise(),
+        'user_wise' => $service->userWise($formId ?: null, $user),
+        'district_wise' => $service->districtWise($formId ?: null, $user),
+        'gps_missing' => $service->gpsMissing($formId ?: null, $user),
+        'duplicates' => $service->duplicates($user),
+        default => $service->surveyWise($user),
     };
     $csv = $service->toCsv($rows, $headers);
     header('Content-Type: text/csv; charset=utf-8');
@@ -41,15 +41,18 @@ if (($_GET['export'] ?? '') === 'csv') {
 }
 
 $data = match ($report) {
-    'user_wise' => $service->userWise($formId ?: null),
-    'district_wise' => $service->districtWise($formId ?: null),
-    'daily' => $service->dailyProgress($formId ?: null),
-    'gps_missing' => $service->gpsMissing($formId ?: null),
-    'duplicates' => $service->duplicates(),
-    default => $service->surveyWise(),
+    'user_wise' => $service->userWise($formId ?: null, $user),
+    'district_wise' => $service->districtWise($formId ?: null, $user),
+    'daily' => $service->dailyProgress($formId ?: null, 30, $user),
+    'gps_missing' => $service->gpsMissing($formId ?: null, $user),
+    'duplicates' => $service->duplicates($user),
+    default => $service->surveyWise($user),
 };
-$summary = $service->statusSummary();
-$forms = \App\Database\Connection::instance()->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll();
+$summary = $service->statusSummary($user);
+$forms = array_values(array_filter(
+    \App\Database\Connection::instance()->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll(),
+    fn(array $f) => $user->canAccessForm((int) $f['id'])
+));
 
 $columns = match ($report) {
     'user_wise' => ['Surveyor', 'Username', 'Total', 'Submitted', 'Published'],

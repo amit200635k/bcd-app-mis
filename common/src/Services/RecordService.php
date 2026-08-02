@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Database\Connection;
+use App\Models\User;
 use RuntimeException;
 
 /**
@@ -38,23 +39,24 @@ final class RecordService
             if ($existing === false) {
                 $stmt = $pdo->prepare(
                     'INSERT INTO survey_records
-                        (record_uuid, form_id, form_version_id, user_id, status, current_stage, synced_at)
-                     VALUES (:u, :f, :v, :uid, :s, NULL, NOW())'
+                        (record_uuid, form_id, form_version_id, user_id, submitted_by, status, current_stage, synced_at)
+                     VALUES (:u, :f, :v, :uid, :sid, :s, NULL, NOW())'
                 );
                 $stmt->execute([
                     'u'   => $uuid,
                     'f'   => $payload['form_id'],
                     'v'   => $payload['form_version_id'],
                     'uid' => $userId,
+                    'sid' => $userId,
                     's'   => $status,
                 ]);
                 $recordId = (int) $pdo->lastInsertId();
             } else {
                 $recordId = (int) $existing['id'];
                 $stmt = $pdo->prepare(
-                    'UPDATE survey_records SET status = :s, synced_at = NOW() WHERE id = :id'
+                    'UPDATE survey_records SET status = :s, submitted_by = COALESCE(submitted_by, :sid), synced_at = NOW() WHERE id = :id'
                 );
-                $stmt->execute(['s' => $status, 'id' => $recordId]);
+                $stmt->execute(['s' => $status, 'sid' => $userId, 'id' => $recordId]);
                 // Replace prior answers.
                 $pdo->prepare('DELETE FROM survey_answers WHERE record_id = :id')->execute(['id' => $recordId]);
             }
@@ -274,7 +276,61 @@ final class RecordService
         }
     }
 
-    public function listRecords(?int $formId = null, string $status = '', int $page = 1, int $perPage = 50): array
+    /**
+     * User ids whose records the given viewer may see: themselves plus any
+     * users managed under their hierarchy scope. State admins see everyone
+     * (returned as [] = "no restriction").
+     *
+     * @return list<int>
+     */
+    public static function scopeUserIds(User $viewer): array
+    {
+        if ($viewer->isStateAdmin()) {
+            return [];
+        }
+        $pdo = Connection::instance();
+
+        // Leaf field collectors only ever see their own submissions.
+        if ($viewer->hasRole('surveyor')) {
+            return [$viewer->id()];
+        }
+
+        $scope = $viewer->scope();
+        if (!empty($scope['village_id'])) {
+            $cond = 'village_id = ' . (int) $scope['village_id'];
+        } elseif (!empty($scope['panchayat_id'])) {
+            $cond = 'panchayat_id = ' . (int) $scope['panchayat_id'];
+        } elseif (!empty($scope['block_id'])) {
+            $cond = 'block_id = ' . (int) $scope['block_id'];
+        } elseif (!empty($scope['district_id'])) {
+            $cond = 'district_id = ' . (int) $scope['district_id'];
+        } elseif ($viewer->hasRole('department_admin') && !empty($scope['department_id'])) {
+            $cond = 'department_id = ' . (int) $scope['department_id'];
+        } else {
+            // Manager without a configured scope — safest to see only own records.
+            return [$viewer->id()];
+        }
+
+        $ids = array_map(
+            'intval',
+            array_column($pdo->query("SELECT id FROM users WHERE deleted_at IS NULL AND {$cond}")->fetchAll(), 'id')
+        );
+        if (!in_array($viewer->id(), $ids, true)) {
+            $ids[] = $viewer->id();
+        }
+        return $ids;
+    }
+
+    /** Whether the viewer may see this record (state admins see all). */
+    public static function canView(User $viewer, array $record): bool
+    {
+        if ($viewer->isStateAdmin()) {
+            return true;
+        }
+        return in_array((int) ($record['user_id'] ?? 0), self::scopeUserIds($viewer), true);
+    }
+
+    public function listRecords(?int $formId = null, string $status = '', int $page = 1, int $perPage = 50, ?User $viewer = null): array
     {
         $pdo = Connection::instance();
         $where = '1=1';
@@ -286,6 +342,13 @@ final class RecordService
         if ($status !== '') {
             $where .= ' AND r.status = :s';
             $params['s'] = $status;
+        }
+        if ($viewer !== null && !$viewer->isStateAdmin()) {
+            $ids = self::scopeUserIds($viewer);
+            if ($ids === []) {
+                $ids = [$viewer->id()];
+            }
+            $where .= ' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')';
         }
         $offset = max(0, ($page - 1) * $perPage);
 
@@ -306,5 +369,49 @@ final class RecordService
         $records = $stmt->fetchAll();
 
         return ['total' => $total, 'page' => $page, 'per_page' => $perPage, 'records' => $records];
+    }
+
+    /** Full record with answers (labelled), images, GPS and workflow history. */
+    public function find(int $recordId): ?array
+    {
+        $pdo = Connection::instance();
+        $stmt = $pdo->prepare(
+            'SELECT r.*, f.title AS form_title, f.code AS form_code, u.full_name AS submitted_by_name
+             FROM survey_records r
+             JOIN survey_forms f ON f.id = r.form_id
+             LEFT JOIN users u ON u.id = r.submitted_by
+             WHERE r.id = :id LIMIT 1'
+        );
+        $stmt->execute(['id' => $recordId]);
+        $record = $stmt->fetch();
+        if ($record === false) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT a.*, f.label AS field_label, f.type AS field_type
+             FROM survey_answers a JOIN survey_fields f ON f.id = a.field_id
+             WHERE a.record_id = :id ORDER BY a.id'
+        );
+        $stmt->execute(['id' => $recordId]);
+        $record['answers'] = $stmt->fetchAll();
+
+        $stmt = $pdo->prepare('SELECT * FROM survey_images WHERE record_id = :id ORDER BY id');
+        $stmt->execute(['id' => $recordId]);
+        $record['images'] = $stmt->fetchAll();
+
+        $stmt = $pdo->prepare('SELECT * FROM gps_logs WHERE record_id = :id ORDER BY id');
+        $stmt->execute(['id' => $recordId]);
+        $record['gps'] = $stmt->fetchAll();
+
+        $stmt = $pdo->prepare(
+            'SELECT w.*, u.full_name AS actor_name
+             FROM record_workflow_logs w LEFT JOIN users u ON u.id = w.acted_by
+             WHERE w.record_id = :id ORDER BY w.id'
+        );
+        $stmt->execute(['id' => $recordId]);
+        $record['workflow'] = $stmt->fetchAll();
+
+        return $record;
     }
 }

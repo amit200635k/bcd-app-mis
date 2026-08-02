@@ -211,4 +211,83 @@ $assignableForms = $usvc->assignableForms($sk);
 $allPublished = (int) $pdo->query('SELECT COUNT(*) FROM survey_forms WHERE status = "published" AND is_active = 1')->fetchColumn();
 check('assignableForms scoped for district user', count($assignableForms) < $allPublished && count($assignableForms) >= 1, count($assignableForms) . '/' . $allPublished);
 
+// 12. Data scope: own + sub-users only; state admin sees all
+$recordSvc = new \App\Services\RecordService();
+
+// Foreign surveyor in a DIFFERENT district (21) — nobody in Ranchi (district 20) may see their data.
+$fkUname = 'SMOKE_scope' . random_int(100, 999);
+$pdo->prepare('INSERT INTO users (username, password_hash, plain_password, full_name, district_id, status)
+               VALUES (:u, :p, :plain, :n, :d, "active")')
+    ->execute(['u' => $fkUname, 'p' => \App\Security\Password::hash('StrongPass1'), 'plain' => config('app.env') !== 'production' ? 'StrongPass1' : null, 'n' => 'Foreign Surveyor', 'd' => 21]);
+$fkId = (int) $pdo->lastInsertId();
+$pdo->prepare('INSERT INTO user_roles (user_id, role_id) SELECT :u, id FROM roles WHERE code = "surveyor"')
+    ->execute(['u' => $fkId]);
+
+$fkRec = $recordSvc->upsert($fkId, [
+    'record_uuid' => 'smoke-scope-' . $fkId,
+    'form_id' => $formId,
+    'form_version_id' => $versionId,
+    'answers' => ['name' => 'Foreign Person', 'age' => 45],
+]);
+$fkRecordId = (int) $fkRec['record_id'];
+
+$fkRow = $pdo->query('SELECT submitted_by FROM survey_records WHERE id = ' . $fkRecordId)->fetch();
+check('upsert sets submitted_by to submitter', (int) $fkRow['submitted_by'] === $fkId, json_encode($fkRow));
+
+$blockAdmin = User::find(4); // jb_block, block 77 / district 20
+$fkRecFull = $pdo->query('SELECT * FROM survey_records WHERE id = ' . $fkRecordId)->fetch();
+check('Block admin cannot view foreign-district record', !$recordSvc->canView($blockAdmin, $fkRecFull));
+check('State admin can view any record', $recordSvc->canView($admin, $fkRecFull));
+
+$blockList = $recordSvc->listRecords($formId, '', 1, 50, $blockAdmin);
+$blockUuids = array_column($blockList['records'], 'record_uuid');
+check('Block admin list excludes foreign record', !in_array($fkRec['record_uuid'], $blockUuids, true));
+
+$adminList = $recordSvc->listRecords($formId, '', 1, 50, $admin);
+$adminUuids = array_column($adminList['records'], 'record_uuid');
+check('State admin list includes foreign record', in_array($fkRec['record_uuid'], $adminUuids, true));
+
+$surveyor = User::find(3); // rk_surveyor (leaf)
+check('Surveyor scope is own id only', $recordSvc->scopeUserIds($surveyor) === [$surveyor->id()]);
+check('Block admin scope is block users + self', in_array(3, $recordSvc->scopeUserIds($blockAdmin), true) && !in_array($fkId, $recordSvc->scopeUserIds($blockAdmin), true));
+
+$detail = $recordSvc->find($fkRecordId);
+check('Record detail returns labelled answers', $detail !== null && ($detail['answers'][0]['field_label'] ?? '') !== '', json_encode($detail['answers'][0] ?? null));
+check('Record detail shows submitter name', ($detail['submitted_by_name'] ?? '') === 'Foreign Surveyor');
+check('Detail not found for missing record', $recordSvc->find(99999999) === null);
+
+// 13. Stored files surface on record detail (photo/answer link round-trip).
+$photoAnswer = $pdo->prepare(
+    'INSERT INTO survey_answers (record_id, field_id, field_key, value_text, value_json) VALUES (:rid, :fid, :k, :t, :j)'
+);
+$fid = (int) $pdo->query('SELECT id FROM survey_fields WHERE field_key = "name" LIMIT 1')->fetchColumn();
+$photoAnswer->execute([
+    'rid' => $fkRecordId, 'fid' => $fid, 'k' => 'photo_front',
+    't' => null, 'j' => json_encode(['image_id' => 1, 'file_path' => 'uploads/survey/' . $fkRecordId . '/photo_test.jpg']),
+]);
+$answerId = (int) $pdo->lastInsertId();
+$pdo->prepare(
+    'INSERT INTO survey_images (record_id, answer_id, file_path, original_name, mime_type, size_bytes, category)
+     VALUES (:rid, :aid, :p, :n, :m, :s, "photo")'
+)->execute([
+    'rid' => $fkRecordId, 'aid' => $answerId,
+    'p' => 'uploads/survey/' . $fkRecordId . '/photo_test.jpg', 'n' => 'test.jpg', 'm' => 'image/jpeg', 's' => 100,
+]);
+$detailWithImage = $recordSvc->find($fkRecordId);
+check('Record detail surfaces stored images', count($detailWithImage['images'] ?? []) === 1 && ($detailWithImage['images'][0]['answer_id'] ?? 0) === $answerId);
+check('Record detail images carry web path', str_starts_with((string) ($detailWithImage['images'][0]['file_path'] ?? ''), 'uploads/survey/'));
+
+// 14. Reports are scoped to the viewer's hierarchy.
+$reportSvc = new ReportService();
+$adminReport = $reportSvc->surveyWise($admin);
+$blockReport = $reportSvc->surveyWise($blockAdmin);
+$smokeRow = static fn(array $rows) => (int) array_reduce(
+    $rows,
+    static fn(int $c, array $row) => $c + ((int) ($row['id'] ?? 0) === $formId ? (int) $row['total'] : 0),
+    0
+);
+$adminTotal = $smokeRow($adminReport);
+$blockTotal = $smokeRow($blockReport);
+check('Reports scoped to viewer hierarchy', $adminTotal >= 2 && $blockTotal === 0, "admin={$adminTotal} block={$blockTotal}");
+
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;

@@ -5,16 +5,35 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Database\Connection;
+use App\Models\User;
 
 /**
- * Aggregate report queries.
+ * Aggregate report queries, scoped to the viewer's data hierarchy.
  */
 final class ReportService
 {
-    public function surveyWise(): array
+    /**
+     * Build a SQL fragment restricting records to the viewer's own +
+     * sub-user data. Returns ['', []] for state admins (no restriction).
+     *
+     * @return array{string, array<string,int|string>}
+     */
+    private function scopeClause(?User $viewer): array
     {
-        return Connection::instance()->query(
-            'SELECT f.id, f.title, f.code,
+        if ($viewer === null || $viewer->isStateAdmin()) {
+            return ['', []];
+        }
+        $ids = RecordService::scopeUserIds($viewer);
+        if ($ids === []) {
+            $ids = [$viewer->id()];
+        }
+        return [' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')', []];
+    }
+
+    public function surveyWise(?User $viewer = null): array
+    {
+        [$scope, $params] = $this->scopeClause($viewer);
+        $sql = 'SELECT f.id, f.title, f.code,
                     COUNT(r.id) AS total,
                     SUM(r.status = "submitted") AS submitted,
                     SUM(r.status = "block_verified") AS block_verified,
@@ -23,20 +42,22 @@ final class ReportService
                     SUM(r.status = "published") AS published,
                     SUM(r.status = "rejected") AS rejected
              FROM survey_forms f
-             LEFT JOIN survey_records r ON r.form_id = f.id
+             LEFT JOIN survey_records r ON r.form_id = f.id' . $scope . '
              GROUP BY f.id, f.title, f.code
-             ORDER BY total DESC'
-        )->fetchAll();
+             ORDER BY total DESC';
+        $stmt = Connection::instance()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
-    public function userWise(?int $formId = null): array
+    public function userWise(?int $formId = null, ?User $viewer = null): array
     {
+        [$scope, $params] = $this->scopeClause($viewer);
         $sql = 'SELECT u.full_name, u.username, COUNT(r.id) AS total,
                        SUM(r.status = "submitted") AS submitted,
                        SUM(r.status = "published") AS published
                 FROM users u
-                LEFT JOIN survey_records r ON r.user_id = u.id';
-        $params = [];
+                LEFT JOIN survey_records r ON r.user_id = u.id' . $scope;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -47,19 +68,16 @@ final class ReportService
         return $stmt->fetchAll();
     }
 
-    public function districtWise(?int $formId = null): array
+    public function districtWise(?int $formId = null, ?User $viewer = null): array
     {
-        $sql = 'SELECT d.name AS district, COUNT(r.id) AS total
-                FROM districts d
-                LEFT JOIN survey_records r ON 1=0';
-        // Records do not carry district FK directly; join through user.
+        [$scope, $params] = $this->scopeClause($viewer);
         $sql = 'SELECT u2.district_id, d.name AS district, COUNT(r.id) AS total
                 FROM survey_records r
                 JOIN users u2 ON u2.id = r.user_id
-                LEFT JOIN districts d ON d.id = u2.district_id';
-        $params = [];
+                LEFT JOIN districts d ON d.id = u2.district_id
+                WHERE 1=1' . $scope;
         if ($formId !== null) {
-            $sql .= ' WHERE r.form_id = :f';
+            $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
         }
         $sql .= ' GROUP BY u2.district_id, d.name ORDER BY total DESC';
@@ -68,16 +86,17 @@ final class ReportService
         return $stmt->fetchAll();
     }
 
-    public function dailyProgress(?int $formId = null, int $days = 30): array
+    public function dailyProgress(?int $formId = null, int $days = 30, ?User $viewer = null): array
     {
-        $sql = 'SELECT DATE(created_at) AS day, COUNT(*) AS total
-                FROM survey_records';
-        $params = [];
+        [$scope, $params] = $this->scopeClause($viewer);
+        $sql = 'SELECT DATE(r.created_at) AS day, COUNT(*) AS total
+                FROM survey_records r
+                WHERE 1=1' . $scope;
         if ($formId !== null) {
-            $sql .= ' WHERE form_id = :f';
+            $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
         }
-        $sql .= ' GROUP BY DATE(created_at) ORDER BY day DESC LIMIT :days';
+        $sql .= ' GROUP BY DATE(r.created_at) ORDER BY day DESC LIMIT :days';
         $stmt = Connection::instance()->prepare($sql);
         foreach ($params as $k => $v) {
             $stmt->bindValue(':' . $k, $v, is_int($v) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
@@ -87,14 +106,14 @@ final class ReportService
         return $stmt->fetchAll();
     }
 
-    public function gpsMissing(?int $formId = null): array
+    public function gpsMissing(?int $formId = null, ?User $viewer = null): array
     {
+        [$scope, $params] = $this->scopeClause($viewer);
         $sql = 'SELECT r.id, r.record_uuid, f.title, r.status, r.created_at
                 FROM survey_records r
                 JOIN survey_forms f ON f.id = r.form_id
                 LEFT JOIN gps_logs g ON g.record_id = r.id
-                WHERE g.id IS NULL';
-        $params = [];
+                WHERE g.id IS NULL' . $scope;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -105,22 +124,27 @@ final class ReportService
         return $stmt->fetchAll();
     }
 
-    public function duplicates(): array
+    public function duplicates(?User $viewer = null): array
     {
-        return Connection::instance()->query(
-            'SELECT record_uuid, COUNT(*) AS cnt, GROUP_CONCAT(id) AS ids
-             FROM survey_records
-             GROUP BY record_uuid
-             HAVING cnt > 1
-             ORDER BY cnt DESC'
-        )->fetchAll();
+        [$scope, $params] = $this->scopeClause($viewer);
+        $sql = 'SELECT record_uuid, COUNT(*) AS cnt, GROUP_CONCAT(id) AS ids
+                FROM survey_records r
+                WHERE 1=1' . $scope . '
+                GROUP BY record_uuid
+                HAVING cnt > 1
+                ORDER BY cnt DESC';
+        $stmt = Connection::instance()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
-    public function statusSummary(): array
+    public function statusSummary(?User $viewer = null): array
     {
-        return Connection::instance()->query(
-            'SELECT status, COUNT(*) AS c FROM survey_records GROUP BY status ORDER BY c DESC'
-        )->fetchAll();
+        [$scope, $params] = $this->scopeClause($viewer);
+        $sql = 'SELECT status, COUNT(*) AS c FROM survey_records r WHERE 1=1' . $scope . ' GROUP BY status ORDER BY c DESC';
+        $stmt = Connection::instance()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     /** Convert a report array to CSV string. */
