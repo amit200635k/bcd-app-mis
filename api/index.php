@@ -39,7 +39,14 @@ $router->get('/v1/forms/{identifier}', \App\Api\Controllers\FormController::show
 // ---------- Survey records ----------
 $router->post('/v1/records', \App\Api\Controllers\RecordController::store(...));
 $router->get('/v1/records', \App\Api\Controllers\RecordController::index(...));
+$router->get('/v1/records/{identifier}', \App\Api\Controllers\RecordController::show(...));
 $router->post('/v1/records/{id}/status', \App\Api\Controllers\RecordController::transition(...));
+$router->post('/v1/records/{id}/photos', \App\Api\Controllers\RecordController::photos(...));
+
+// ---------- Devices & sync ----------
+$router->post('/v1/devices', \App\Api\Controllers\DeviceController::register(...));
+$router->delete('/v1/devices/{device_id}', \App\Api\Controllers\DeviceController::deregister(...));
+$router->get('/v1/sync/status', \App\Api\Controllers\RecordController::syncStatus(...));
 
 // ---------- GIS ----------
 $router->get('/v1/gis/points', \App\Api\Controllers\GisController::points(...));

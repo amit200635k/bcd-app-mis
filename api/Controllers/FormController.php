@@ -16,19 +16,25 @@ final class FormController
         return new SurveyService();
     }
 
-    /** List published forms (for mobile download). */
+    /** List published forms (for mobile download), filtered by user form access. */
     public static function index(): never
     {
-        ApiAuth::requireAuth();
+        $user = ApiAuth::requireAuth();
         $service = self::service();
         $forms = $service->publishedForms();
+
+        if (!$user->isStateAdmin()) {
+            $allowed = $user->assignedFormIds();
+            $forms = array_values(array_filter($forms, static fn (array $f) => in_array((int) $f['id'], $allowed, true)));
+        }
+
         Response::ok(['updated_at' => date('c'), 'forms' => $forms]);
     }
 
     /** Download a single form definition by code or id. */
     public static function show(array $params): never
     {
-        ApiAuth::requireAuth();
+        $user = ApiAuth::requireAuth();
         $identifier = (string) $params['identifier'];
         $service = self::service();
         $pdo = \App\Database\Connection::instance();
@@ -42,6 +48,9 @@ final class FormController
         }
         if ($form['status'] !== 'published') {
             Response::error('Survey form is not published.', 403);
+        }
+        if (!$user->canAccessForm((int) $form['id'])) {
+            Response::forbidden('You do not have access to this survey form.');
         }
 
         $def = $service->formDefinition((int) $form['id']);
