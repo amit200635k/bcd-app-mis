@@ -31,9 +31,10 @@ All authenticated endpoints require header: `Authorization: Bearer <access_token
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/v1/records` | Upsert record. Body: `{record_uuid, form_id, form_version_id, status, answers{field_key:value}, gps?}` |
+| POST | `/v1/records` | Upsert record. Body: `{record_uuid, form_id, form_version_id, status, device_id?, answers{field_key:value}, gps?}`. On success the change is also enqueued in the mobile sync queue (see `/v1/sync/status`). |
 | GET | `/v1/records` | List records. Query: `form_id`, `status`, `page`, `per_page` |
 | POST | `/v1/records/{id}/status` | Workflow transition. Body: `{status, remark?}` |
+| GET | `/v1/sync/status` | Pending mobile-sync queue status for the calling user's devices (`pending` count + `by_status` breakdown). The queue is populated by `POST /v1/records` when the user has an active device (optionally targeting the submitted `device_id`). |
 
 ## GIS
 
@@ -68,10 +69,11 @@ TOKEN=$(curl -s -X POST -d '{"username":"ram.surveyor","password":"Survey@123"}'
 # 2. Download survey forms
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost/bcd-app/api/v1/forms
 
-# 3. Upload a record
+# 3. Upload a record (device_id is optional but queues a mobile-sync item)
 curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"record_uuid":"abc-123","form_id":2,"form_version_id":2,"status":"submitted",
+       "device_id":"my-device-001",
        "answers":{"school_name":"Govt HS","school_type":"secondary","student_count":340},
        "gps":{"latitude":28.6139,"longitude":77.2090,"accuracy":4.0}}' \
   http://localhost/bcd-app/api/v1/records

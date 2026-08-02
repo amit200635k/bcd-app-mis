@@ -507,4 +507,66 @@ $tripStmt->execute(['id' => $tripRec['record_id']]);
 $tripKeys = array_column($tripStmt->fetchAll(), 'field_key');
 check('Round-tripped conditions still drop hidden answers', !in_array('hidden_mand', $tripKeys, true) && in_array('condreq', $tripKeys, true), implode(',', $tripKeys));
 
+// 18. Mobile sync queue populated on record store (Phase 4).
+$syncDevice = 'TEST-DEV-SMOKE-' . time();
+$pdo->prepare('INSERT INTO devices (user_id, device_id, device_name, platform, is_active) VALUES (:u, :d, :n, :p, 1)')
+    ->execute(['u' => 3, 'd' => $syncDevice, 'n' => 'Smoke Phone', 'p' => 'android']);
+$syncDeviceId = (int) $pdo->lastInsertId();
+
+// Upsert a record, then enqueue the sync change (as the API store does).
+$syncRec = $recordSvc->upsert(3, [
+    'record_uuid' => 'smoke-sync-' . time(),
+    'form_id' => $formId,
+    'form_version_id' => $versionId,
+    'answers' => ['name' => 'Sync Person'],
+]);
+$recordSvc->enqueueSync(3, $syncDevice, [
+    'record_uuid' => $syncRec['record_uuid'],
+    'record_id'   => (int) $syncRec['record_id'],
+    'form_id'     => $formId,
+    'form_version_id' => $versionId,
+    'status'      => $syncRec['status'],
+]);
+
+$queueStmt = $pdo->prepare('SELECT device_id, record_uuid, action, status, payload_json FROM sync_queue WHERE record_uuid = :u');
+$queueStmt->execute(['u' => $syncRec['record_uuid']]);
+$queueRows = $queueStmt->fetchAll();
+$q = $queueRows[0] ?? null;
+$queuePayload = $q !== null ? json_decode((string) $q['payload_json'], true) : null;
+check('Record store enqueues pending sync item', $q !== null && (int) $q['device_id'] === $syncDeviceId && $q['action'] === 'upsert' && $q['status'] === 'pending', json_encode($q));
+check('Sync payload carries record metadata', ($queuePayload['record_uuid'] ?? '') === $syncRec['record_uuid'] && (int) ($queuePayload['record_id'] ?? 0) === (int) $syncRec['record_id'] && ($queuePayload['form_id'] ?? 0) == $formId, json_encode($queuePayload));
+
+// Re-enqueueing the same record (re-sync) must not stack duplicates.
+$recordSvc->enqueueSync(3, $syncDevice, [
+    'record_uuid' => $syncRec['record_uuid'],
+    'record_id'   => (int) $syncRec['record_id'],
+    'form_id'     => $formId,
+    'form_version_id' => $versionId,
+    'status'      => $syncRec['status'],
+]);
+$queueStmt->execute(['u' => $syncRec['record_uuid']]);
+$afterResync = $queueStmt->fetchAll();
+check('Re-sync replaces the pending item (no duplicates)', count($afterResync) === 1, 'rows=' . count($afterResync));
+
+// sync/status mirror: pending count for the user's devices.
+$pending = (int) $pdo->query('SELECT COUNT(*) FROM sync_queue WHERE user_id = 3 AND status = "pending"')->fetchColumn();
+check('sync/status pending reflects queued record', $pending >= 1, "pending={$pending}");
+
+// Unknown device id falls back to the user's active devices (still enqueues).
+$recordSvc->enqueueSync(3, 'NO-SUCH-DEVICE', [
+    'record_uuid' => $syncRec['record_uuid'],
+    'record_id'   => (int) $syncRec['record_id'],
+    'form_id'     => $formId,
+    'form_version_id' => $versionId,
+    'status'      => $syncRec['status'],
+]);
+$queueStmt->execute(['u' => $syncRec['record_uuid']]);
+$afterFallback = $queueStmt->fetchAll();
+check('Unknown device falls back to active devices (still 1 pending)', count($afterFallback) === 1, 'rows=' . count($afterFallback));
+
+// Cleanup: remove the smoke device (cascades its sync_queue rows).
+$pdo->prepare('DELETE FROM devices WHERE id = :id')->execute(['id' => $syncDeviceId]);
+$queueStmt->execute(['u' => $syncRec['record_uuid']]);
+check('Deleting the device removes its queued items (cascade)', $queueStmt->fetchAll() === []);
+
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;

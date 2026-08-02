@@ -682,6 +682,16 @@ async function misSuite(page) {
             body: JSON.stringify({ username: 'admin', password: 'Admin@12345' }),
         });
         const token = (await login.json()).data.access_token;
+        const authHeaders = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+
+        // Register a device so record stores populate the mobile sync queue.
+        const devId = 'TEST-DEV-E2E-' + Date.now();
+        const devRes = await fetch(api('/devices'), {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ device_id: devId, device_name: 'E2E Phone' }),
+        });
+        const devReg = await devRes.json();
 
         // The published conditional form must expose its rules to mobile.
         const defRes = await fetch(api('/forms/' + encodeURIComponent(c)), {
@@ -696,11 +706,12 @@ async function misSuite(page) {
         const post = async (answers, suffix) => {
             const res = await fetch(api('/records'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                headers: authHeaders,
                 body: JSON.stringify({
                     record_uuid: 'e2e-cond-' + Date.now() + '-' + suffix,
                     form_id: def.form.id,
                     form_version_id: def.version,
+                    device_id: devId,
                     answers,
                 }),
             });
@@ -722,22 +733,33 @@ async function misSuite(page) {
             hiddenHasLocation = (rec.data.answers || []).some((a) => a.field_key === 'e2e_location');
         }
 
+        // The two 201 stores should have populated the mobile sync queue.
+        const sync = await (await fetch(api('/sync/status'), {
+            headers: { Authorization: 'Bearer ' + token },
+        })).json();
+        const syncPending = (sync.data || {}).pending;
+
         return {
             condExposed: !!(loc && showCond && showCond.operator === 'equals' && showCond.condition_value === 'option_a'),
+            deviceRegistered: devRes.ok && !!(devReg.data && devReg.data.device && devReg.data.device.id),
             droppedStatus: dropped.status,
             hiddenHasLocation,
             rejectedStatus: rejected.status,
             rejectedHasField: !!(rejected.json.errors && rejected.json.errors.e2e_location),
             rejectedJson: JSON.stringify(rejected.json),
             keptStatus: kept.status,
+            syncPending,
         };
     }, { b: BASE, c: code });
 
     ok('form definition exposes conditions for mobile', condApi.condExposed);
+    ok('device registered via API', condApi.deviceRegistered === true);
     ok('hidden-field answer dropped via API store (201)', condApi.droppedStatus === 201 && condApi.hiddenHasLocation === false);
     ok('condition-required enforced via API (422)', condApi.rejectedStatus === 422 && condApi.rejectedHasField === true,
         `status=${condApi.rejectedStatus} body=${condApi.rejectedJson}`);
     ok('visible conditional answer stored via API (201)', condApi.keptStatus === 201);
+    ok('record store populates sync queue (pending > 0)', typeof condApi.syncPending === 'number' && condApi.syncPending > 0,
+        `pending=${condApi.syncPending}`);
 }
 
 /* ====================== ROLE DASHBOARD SUITE ====================== */

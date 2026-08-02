@@ -29,6 +29,7 @@ final class RecordController
             'form_id'         => 'required|integer',
             'form_version_id' => 'required|integer',
             'record_uuid'     => 'string|max_length:36',
+            'device_id'       => 'string|max_length:100',
         ]);
         if ($v->fails()) {
             Response::validation($v->errors());
@@ -51,6 +52,22 @@ final class RecordController
 
         try {
             $result = self::service()->upsert($user->id(), $data);
+
+            // Record the change in the mobile sync queue so /v1/sync/status
+            // reports pending work. Best-effort: a queue failure must not
+            // reject an already-persisted record.
+            try {
+                self::service()->enqueueSync($user->id(), (string) ($data['device_id'] ?? ''), [
+                    'record_uuid'     => (string) $result['record_uuid'],
+                    'record_id'       => (int) $result['record_id'],
+                    'form_id'         => (int) $data['form_id'],
+                    'form_version_id' => (int) $data['form_version_id'],
+                    'status'          => (string) $result['status'],
+                ]);
+            } catch (\Throwable $e) {
+                error_log('sync_queue enqueue failed: ' . exception_message($e));
+            }
+
             Response::created($result);
         } catch (ValidationException $e) {
             Response::validation($e->errors());

@@ -84,6 +84,76 @@ final class RecordService
     }
 
     /**
+     * Enqueue a pending mobile-sync item for the user's device(s) so the
+     * `/v1/sync/status` endpoint reflects the change. When a client device
+     * identifier is supplied and matches an active device of the user, the
+     * item is enqueued for that device only; otherwise it is enqueued for all
+     * of the user's active devices. Users with no registered active device are
+     * skipped (there is nowhere to sync to).
+     *
+     * Re-storing the same record (a re-sync) replaces any prior pending or
+     * in-flight item for that record instead of stacking duplicates.
+     *
+     * @param array{record_uuid:string, record_id:int, form_id:int, form_version_id:int, status:string} $change
+     */
+    public function enqueueSync(int $userId, ?string $clientDeviceId, array $change): void
+    {
+        $pdo = Connection::instance();
+
+        $deviceIds = [];
+        if ($clientDeviceId !== null && $clientDeviceId !== '') {
+            $stmt = $pdo->prepare(
+                'SELECT id FROM devices WHERE user_id = :u AND device_id = :d AND is_active = 1 LIMIT 1'
+            );
+            $stmt->execute(['u' => $userId, 'd' => $clientDeviceId]);
+            $deviceId = (int) $stmt->fetchColumn();
+            if ($deviceId > 0) {
+                $deviceIds[] = $deviceId;
+            }
+        }
+        if ($deviceIds === []) {
+            $stmt = $pdo->prepare('SELECT id FROM devices WHERE user_id = :u AND is_active = 1');
+            $stmt->execute(['u' => $userId]);
+            $deviceIds = array_map('intval', array_column($stmt->fetchAll(), 'id'));
+        }
+        if ($deviceIds === []) {
+            return;
+        }
+
+        $recordUuid = (string) $change['record_uuid'];
+        $payload = json_encode([
+            'action'          => 'upsert',
+            'record_uuid'     => $recordUuid,
+            'record_id'       => $change['record_id'] ?? null,
+            'form_id'         => $change['form_id'] ?? null,
+            'form_version_id' => $change['form_version_id'] ?? null,
+            'status'          => $change['status'] ?? 'submitted',
+            'server_time'     => date('c'),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        // A re-sync of the same record supersedes any prior pending/processing item.
+        $delete = $pdo->prepare(
+            "DELETE FROM sync_queue
+             WHERE user_id = :u AND record_uuid = :uuid AND action = 'upsert'
+               AND status IN ('pending','processing')"
+        );
+        $delete->execute(['u' => $userId, 'uuid' => $recordUuid]);
+
+        $insert = $pdo->prepare(
+            "INSERT INTO sync_queue (device_id, user_id, record_uuid, action, payload_json)
+             VALUES (:did, :u, :uuid, 'upsert', :payload)"
+        );
+        foreach ($deviceIds as $deviceId) {
+            $insert->execute([
+                'did'     => $deviceId,
+                'u'       => $userId,
+                'uuid'    => $recordUuid,
+                'payload' => $payload,
+            ]);
+        }
+    }
+
+    /**
      * Evaluate the form version's conditional rules against the submitted
      * answers: drop answers for fields hidden by conditions so persisted data
      * always reflects the evaluated form, and (for real submissions, not
