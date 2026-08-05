@@ -56,11 +56,14 @@ $forms = array_values(array_filter(
 ));
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-eye me-2"></i>Survey Monitoring</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-eye me-2"></i>Survey Monitoring</h1>
+        <div class="page-subtitle">Review and manage submitted survey records</div>
+    </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
+<div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-4">
@@ -80,16 +83,14 @@ ob_start(); ?>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2">
-                <button class="btn btn-sm btn-primary w-100">Filter</button>
-            </div>
+            <div class="col-md-2"><button class="btn btn-primary w-100">Filter</button></div>
         </form>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-body table-responsive">
-        <table class="table table-hover align-middle mb-0">
+<div class="card">
+    <div class="card-body table-responsive p-0">
+        <table class="table table-hover align-middle mb-0 data-table">
             <thead>
                 <tr>
                     <th>Record</th>
@@ -101,11 +102,9 @@ ob_start(); ?>
                 </tr>
             </thead>
             <tbody>
-            <?php if ($result['records'] === []): ?>
-                <tr><td colspan="6" class="text-center text-muted py-4">No records found.</td></tr>
-            <?php else: foreach ($result['records'] as $r): ?>
+            <?php foreach ($result['records'] as $r): ?>
                 <tr>
-                    <td><code class="small"><?= e(substr((string) $r['record_uuid'], 0, 8)) ?></code> #<?= (int) $r['id'] ?></td>
+                    <td><code class="small"><?= e(substr((string) $r['record_uuid'], 0, 8)) ?> #<?= (int) $r['id'] ?></code></td>
                     <td><?= e($r['form_title']) ?></td>
                     <td><?= e((string) ($r['submitted_by_name'] ?? '—')) ?></td>
                     <td>
@@ -152,7 +151,7 @@ ob_start(); ?>
                         <?php endif; ?>
                     </td>
                 </tr>
-            <?php endforeach; endif; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
 
@@ -173,8 +172,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Survey Monitoring',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'monitoring',
+    'title'      => 'Survey Monitoring',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'monitoring',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Monitoring', '']],
 ]);

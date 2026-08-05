@@ -47,14 +47,17 @@ foreach ($forms as $f) {
 }
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-ui-checks me-2"></i>Survey Builder</h4>
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newFormModal"><i class="bi bi-plus-lg me-1"></i>New Form</button>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-ui-checks me-2"></i>Survey Builder</h1>
+        <div class="page-subtitle">Create and manage survey forms</div>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newFormModal"><i class="bi bi-plus-lg me-1"></i>New Form</button>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-body table-responsive">
-        <table class="table table-hover align-middle mb-0">
+<div class="card">
+    <div class="card-body table-responsive p-0">
+        <table class="table table-hover align-middle mb-0 data-table">
             <thead>
                 <tr>
                     <th>Code</th>
@@ -67,9 +70,7 @@ ob_start(); ?>
                 </tr>
             </thead>
             <tbody>
-            <?php if ($forms === []): ?>
-                <tr><td colspan="7" class="text-center text-muted py-4">No survey forms yet. Click "New Form" to start.</td></tr>
-            <?php else: foreach ($forms as $f): ?>
+            <?php foreach ($forms as $f): ?>
                 <?php $vinfo = $versionInfos[(int) $f['id']] ?? ['published_version' => 0, 'draft_version' => 0, 'pending_changes' => false]; ?>
                 <tr>
                     <td><code><?= e($f['code']) ?></code></td>
@@ -98,7 +99,7 @@ ob_start(); ?>
                         <?php endif; ?>
                     </td>
                 </tr>
-            <?php endforeach; endif; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
     </div>
@@ -138,7 +139,7 @@ ob_start(); ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-success">Create & Design</button>
+                <button type="submit" class="btn btn-primary">Create &amp; Design</button>
             </div>
         </form>
     </div>
@@ -146,8 +147,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Survey Builder',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'builder',
+    'title'      => 'Survey Builder',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'builder',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Survey Builder', '']],
 ]);

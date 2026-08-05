@@ -99,14 +99,17 @@ if ($activeGroupId > 0) {
 }
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-database me-2"></i>Master Data</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-database me-2"></i>Master Data</h1>
+        <div class="page-subtitle">Manage master groups and their items</div>
+    </div>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-5">
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Create Master Group</div>
+        <div class="card mb-3">
+            <div class="card-header">Create Master Group</div>
             <div class="card-body">
                 <form method="post">
                     <input type="hidden" name="action" value="create_group">
@@ -119,20 +122,18 @@ ob_start(); ?>
                         <label class="form-label">Name</label>
                         <input type="text" name="name" class="form-control" placeholder="e.g. Crop Types" required>
                     </div>
-                    <button class="btn btn-danger w-100"><i class="bi bi-plus-lg me-1"></i>Create Group</button>
+                    <button class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Create Group</button>
                 </form>
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Master Groups</div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm align-middle mb-0">
+        <div class="card">
+            <div class="card-header">Master Groups</div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead><tr><th>Name</th><th>Code</th><th class="text-end">Items</th><th></th></tr></thead>
                     <tbody>
-                    <?php if ($groups === []): ?>
-                        <tr><td colspan="4" class="text-center text-muted py-3">No master groups yet.</td></tr>
-                    <?php else: foreach ($groups as $g): ?>
+                    <?php foreach ($groups as $g): ?>
                         <tr class="<?= $activeGroupId === (int) $g['id'] ? 'table-active' : '' ?>">
                             <td><a href="masters.php?group_id=<?= (int) $g['id'] ?>" class="fw-semibold text-decoration-none"><?= e($g['name']) ?></a></td>
                             <td><code><?= e($g['code']) ?></code></td>
@@ -146,25 +147,25 @@ ob_start(); ?>
                                 </form>
                                 <?php endif; ?>
                             </td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+                         </tr>
+                     <?php endforeach; ?>
+                     </tbody>
+                 </table>
+             </div>
+         </div>
+     </div>
 
-    <div class="col-lg-7">
-        <?php if ($activeGroup === null): ?>
-        <div class="card border-0 shadow-sm">
+     <div class="col-lg-7">
+         <?php if ($activeGroup === null): ?>
+        <div class="card">
             <div class="card-body text-center text-muted py-5">
                 <i class="bi bi-database fs-1 d-block mb-2"></i>
                 Select a master group on the left to manage its items.
             </div>
         </div>
         <?php else: ?>
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold"><code><?= e($activeGroup['code']) ?></code> — <?= e($activeGroup['name']) ?></span>
                 <span class="badge bg-secondary"><?= count($items) ?> items</span>
             </div>
@@ -174,28 +175,26 @@ ob_start(); ?>
                     <input type="hidden" name="group_id" value="<?= (int) $activeGroup['id'] ?>">
                     <div class="col-md-4">
                         <label class="form-label small mb-1">Name *</label>
-                        <input type="text" name="name" class="form-control form-control-sm" placeholder="e.g. Ranchi" required>
+                        <input type="text" name="name" class="form-control" placeholder="e.g. Ranchi" required>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small mb-1">Code</label>
-                        <input type="text" name="code" class="form-control form-control-sm" placeholder="optional">
+                        <input type="text" name="code" class="form-control" placeholder="optional">
                     </div>
                     <div class="col-md-4">
-                        <button class="btn btn-sm btn-danger w-100"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
+                        <button class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Items</div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
+        <div class="card">
+            <div class="card-header">Items</div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead><tr><th>Name</th><th>Code</th><th class="text-end">Actions</th></tr></thead>
                     <tbody>
-                    <?php if ($items === []): ?>
-                        <tr><td colspan="3" class="text-center text-muted py-3">No items in this group yet.</td></tr>
-                    <?php else: foreach ($items as $item): ?>
+                    <?php foreach ($items as $item): ?>
                         <tr>
                             <td class="fw-semibold"><?= e($item['name']) ?></td>
                             <td><code><?= e($item['code']) ?></code></td>
@@ -207,20 +206,21 @@ ob_start(); ?>
                                     <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                 </form>
                             </td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <?php endif; ?>
+                         </tr>
+                     <?php endforeach; ?>
+                     </tbody>
+                 </table>
+             </div>
+         </div>
+         <?php endif; ?>
     </div>
 </div>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Master Data',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'masters',
+    'title'      => 'Master Data',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'masters',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['Master Data', '']],
 ]);

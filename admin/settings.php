@@ -33,14 +33,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $settings = $pdo->query('SELECT setting_key, setting_value, updated_at FROM settings ORDER BY setting_key')->fetchAll();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-gear me-2"></i>System Settings</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-gear me-2"></i>System Settings</h1>
+        <div class="page-subtitle">Configure application settings</div>
+    </div>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-5">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Add / Update Setting</div>
+        <div class="card">
+            <div class="card-header">Add / Update Setting</div>
             <div class="card-body">
                 <form method="post">
                     <div class="mb-3">
@@ -51,27 +54,25 @@ ob_start(); ?>
                         <label class="form-label">Value</label>
                         <input type="text" name="setting_value" class="form-control" required>
                     </div>
-                    <button class="btn btn-danger w-100"><i class="bi bi-save me-1"></i>Save</button>
+                    <button class="btn btn-primary w-100"><i class="bi bi-save me-1"></i>Save</button>
                 </form>
             </div>
         </div>
     </div>
     <div class="col-lg-7">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Stored Settings</div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm align-middle mb-0">
+        <div class="card">
+            <div class="card-header">Stored Settings</div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead><tr><th>Key</th><th>Value</th><th>Updated</th></tr></thead>
                     <tbody>
-                    <?php if ($settings === []): ?>
-                        <tr><td colspan="3" class="text-center text-muted py-3">No settings stored.</td></tr>
-                    <?php else: foreach ($settings as $s): ?>
+                    <?php foreach ($settings as $s): ?>
                         <tr>
                             <td><code><?= e($s['setting_key']) ?></code></td>
                             <td><?= e($s['setting_value']) ?></td>
                             <td class="text-muted small"><?= date('d M H:i', strtotime((string) $s['updated_at'])) ?></td>
                         </tr>
-                    <?php endforeach; endif; ?>
+                    <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
@@ -81,8 +82,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Settings',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'settings',
+    'title'      => 'Settings',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'settings',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['Settings', '']],
 ]);

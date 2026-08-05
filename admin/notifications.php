@@ -41,14 +41,17 @@ $sent = $pdo->query(
 )->fetchAll();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-bell me-2"></i>Broadcast Notifications</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-bell me-2"></i>Broadcast Notifications</h1>
+        <div class="page-subtitle">Send notifications to users or roles</div>
+    </div>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-5">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Send Notification</div>
+        <div class="card">
+            <div class="card-header">Send Notification</div>
             <div class="card-body">
                 <form method="post">
                     <div class="mb-3">
@@ -77,28 +80,26 @@ ob_start(); ?>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <button class="btn btn-danger w-100"><i class="bi bi-send me-1"></i>Broadcast</button>
+                    <button class="btn btn-primary w-100"><i class="bi bi-send me-1"></i>Broadcast</button>
                 </form>
             </div>
         </div>
     </div>
     <div class="col-lg-7">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Recently Sent</div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm align-middle mb-0">
+        <div class="card">
+            <div class="card-header">Recently Sent</div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead><tr><th>Title</th><th>Recipients</th><th>Sent By</th><th>Time</th></tr></thead>
                     <tbody>
-                    <?php if ($sent === []): ?>
-                        <tr><td colspan="4" class="text-center text-muted py-3">No notifications sent.</td></tr>
-                    <?php else: foreach ($sent as $n): ?>
+                    <?php foreach ($sent as $n): ?>
                         <tr>
                             <td><?= e($n['title']) ?><br><small class="text-muted"><?= e((string) ($n['body'] ?? '')) ?></small></td>
                             <td><?= (int) $n['recipients'] ?></td>
                             <td><?= e((string) ($n['sender'] ?? 'system')) ?></td>
                             <td class="text-muted small"><?= date('d M H:i', strtotime((string) $n['created_at'])) ?></td>
                         </tr>
-                    <?php endforeach; endif; ?>
+                    <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
@@ -108,8 +109,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Notifications',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'notifications',
+    'title'      => 'Notifications',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'notifications',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['Notifications', '']],
 ]);

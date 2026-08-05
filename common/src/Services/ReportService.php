@@ -30,9 +30,38 @@ final class ReportService
         return [' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')', []];
     }
 
+    /**
+     * Build a SQL fragment restricting to forms the viewer can access.
+     * State admins get no restriction. Users with no assigned forms get
+     * a clause that returns no rows.
+     *
+     * @param string $column The table.column to restrict (e.g. "f.id" or "r.form_id")
+     * @return array{string, array<string,int>}
+     */
+    private function formAccessClause(string $column, ?User $viewer): array
+    {
+        if ($viewer === null || $viewer->isStateAdmin()) {
+            return ['', []];
+        }
+        $formIds = $viewer->assignedFormIds();
+        if ($formIds === []) {
+            return [" AND {$column} = 0", []];
+        }
+        $placeholders = [];
+        $params = [];
+        foreach ($formIds as $i => $id) {
+            $key = ':fid_' . $i;
+            $placeholders[] = $key;
+            $params[$key] = $id;
+        }
+        return [' AND ' . $column . ' IN (' . implode(',', $placeholders) . ')', $params];
+    }
+
     public function surveyWise(?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('f.id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT f.id, f.title, f.code,
                     COUNT(r.id) AS total,
                     SUM(r.status = "submitted") AS submitted,
@@ -41,10 +70,11 @@ final class ReportService
                     SUM(r.status = "approved") AS approved,
                     SUM(r.status = "published") AS published,
                     SUM(r.status = "rejected") AS rejected
-             FROM survey_forms f
-             LEFT JOIN survey_records r ON r.form_id = f.id' . $scope . '
-             GROUP BY f.id, f.title, f.code
-             ORDER BY total DESC';
+              FROM survey_forms f
+              LEFT JOIN survey_records r ON r.form_id = f.id' . $scope . '
+              WHERE 1=1' . $formClause . '
+              GROUP BY f.id, f.title, f.code
+              ORDER BY total DESC';
         $stmt = Connection::instance()->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -53,11 +83,14 @@ final class ReportService
     public function userWise(?int $formId = null, ?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT u.full_name, u.username, COUNT(r.id) AS total,
                        SUM(r.status = "submitted") AS submitted,
                        SUM(r.status = "published") AS published
                 FROM users u
-                LEFT JOIN survey_records r ON r.user_id = u.id' . $scope;
+                LEFT JOIN survey_records r ON r.user_id = u.id' . $scope .
+                ' WHERE 1=1' . $formClause;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -71,11 +104,13 @@ final class ReportService
     public function districtWise(?int $formId = null, ?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT u2.district_id, d.name AS district, COUNT(r.id) AS total
                 FROM survey_records r
                 JOIN users u2 ON u2.id = r.user_id
                 LEFT JOIN districts d ON d.id = u2.district_id
-                WHERE 1=1' . $scope;
+                WHERE 1=1' . $scope . $formClause;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -89,9 +124,11 @@ final class ReportService
     public function dailyProgress(?int $formId = null, int $days = 30, ?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT DATE(r.created_at) AS day, COUNT(*) AS total
                 FROM survey_records r
-                WHERE 1=1' . $scope;
+                WHERE 1=1' . $scope . $formClause;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -109,11 +146,13 @@ final class ReportService
     public function gpsMissing(?int $formId = null, ?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT r.id, r.record_uuid, f.title, r.status, r.created_at
                 FROM survey_records r
                 JOIN survey_forms f ON f.id = r.form_id
                 LEFT JOIN gps_logs g ON g.record_id = r.id
-                WHERE g.id IS NULL' . $scope;
+                WHERE g.id IS NULL' . $scope . $formClause;
         if ($formId !== null) {
             $sql .= ' AND r.form_id = :f';
             $params['f'] = $formId;
@@ -127,9 +166,11 @@ final class ReportService
     public function duplicates(?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
         $sql = 'SELECT record_uuid, COUNT(*) AS cnt, GROUP_CONCAT(id) AS ids
                 FROM survey_records r
-                WHERE 1=1' . $scope . '
+                WHERE 1=1' . $scope . $formClause . '
                 GROUP BY record_uuid
                 HAVING cnt > 1
                 ORDER BY cnt DESC';
@@ -141,7 +182,9 @@ final class ReportService
     public function statusSummary(?User $viewer = null): array
     {
         [$scope, $params] = $this->scopeClause($viewer);
-        $sql = 'SELECT status, COUNT(*) AS c FROM survey_records r WHERE 1=1' . $scope . ' GROUP BY status ORDER BY c DESC';
+        [$formClause, $formParams] = $this->formAccessClause('r.form_id', $viewer);
+        $params = array_merge($params, $formParams);
+        $sql = 'SELECT status, COUNT(*) AS c FROM survey_records r WHERE 1=1' . $scope . $formClause . ' GROUP BY status ORDER BY c DESC';
         $stmt = Connection::instance()->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -340,19 +383,27 @@ final class ReportService
         $inList = implode(',', array_map(static fn ($k) => $pdo->quote($k), array_keys($joinKeys)));
 
         $selects = ['r.id', 'r.record_uuid', 'r.status', 'r.created_at', 'u.full_name AS surveyor'];
-        foreach ($cols as $k => $label) {
-            if ($k === 'district') {
-                $selects[] = "MAX(CASE WHEN a.field_key = 'location' THEN JSON_UNQUOTE(JSON_EXTRACT(a.value_json, '\$.district_name')) END) AS district";
-            } elseif ($k === 'block') {
-                $selects[] = "MAX(CASE WHEN a.field_key = 'location' THEN JSON_UNQUOTE(JSON_EXTRACT(a.value_json, '\$.block_name')) END) AS block";
-            } else {
-                $selects[] = "MAX(CASE WHEN a.field_key = '{$k}' THEN COALESCE(a.value_text, a.value_number) END) AS `{$k}`";
+        $pivotCols = [];
+        if ($inList !== '') {
+            foreach ($cols as $k => $label) {
+                if ($k === 'district') {
+                    $pivotCols[] = "MAX(CASE WHEN a.field_key = 'location' THEN JSON_UNQUOTE(JSON_EXTRACT(a.value_json, '\$.district_name')) END) AS district";
+                } elseif ($k === 'block') {
+                    $pivotCols[] = "MAX(CASE WHEN a.field_key = 'location' THEN JSON_UNQUOTE(JSON_EXTRACT(a.value_json, '\$.block_name')) END) AS block";
+                } else {
+                    $pivotCols[] = "MAX(CASE WHEN a.field_key = '{$k}' THEN COALESCE(a.value_text, a.value_number) END) AS `{$k}`";
+                }
             }
         }
+        $selects = array_merge($selects, $pivotCols);
+
+        $join = $inList !== ''
+            ? 'LEFT JOIN survey_answers a ON a.record_id = r.id AND a.field_key IN (' . $inList . ')'
+            : '';
 
         $sql = 'SELECT ' . implode(', ', $selects) . "
                 FROM survey_records r
-                LEFT JOIN survey_answers a ON a.record_id = r.id AND a.field_key IN ({$inList})
+                {$join}
                 LEFT JOIN users u ON u.id = r.submitted_by
                 WHERE {$where}
                 GROUP BY r.id, r.record_uuid, r.status, r.created_at, u.full_name

@@ -20,29 +20,30 @@ $forms = $service->assignableForms($user);
 $canGrantAdmin = $user->isStateAdmin();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-people me-2"></i>User Management</h4>
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#userModal" onclick="openModal()"><i class="bi bi-person-plus me-1"></i>New User</button>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-people me-2"></i>User Management</h1>
+        <div class="page-subtitle">Manage user accounts and permissions</div>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal" onclick="openModal()"><i class="bi bi-person-plus me-1"></i>New User</button>
 </div>
 
-<div class="card border-0 shadow-sm">
+<div class="card">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end mb-3">
             <div class="col-md-6">
-                <input type="text" name="q" class="form-control form-control-sm" value="<?= e($search) ?>" placeholder="Search by name, username or mobile…">
+                <input type="text" name="q" class="form-control" value="<?= e($search) ?>" placeholder="Search by name, username or mobile…">
             </div>
-            <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Search</button></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
         </form>
 
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0 data-table">
                 <thead>
                     <tr><th>Name</th><th>Username</th><?php if (config('app.env') !== 'production'): ?><th>Password (dev)</th><?php endif; ?><th>Mobile</th><th>Roles</th><th>Status</th><th>Last Login</th><th class="text-end">Actions</th></tr>
                 </thead>
                 <tbody>
-                <?php if ($result['users'] === []): ?>
-                    <tr><td colspan="8" class="text-center text-muted py-4">No users found.</td></tr>
-                <?php else: foreach ($result['users'] as $u): ?>
+                <?php foreach ($result['users'] as $u): ?>
                     <tr>
                         <td class="fw-semibold"><?= e($u['full_name']) ?></td>
                         <td><code><?= e($u['username']) ?></code></td>
@@ -72,7 +73,7 @@ ob_start(); ?>
                             <?php endif; ?>
                         </td>
                     </tr>
-                <?php endforeach; endif; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -174,7 +175,7 @@ ob_start(); ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-success">Save</button>
+                <button type="submit" class="btn btn-primary">Save</button>
             </div>
         </form>
     </div>
@@ -251,8 +252,9 @@ async function openModal(id) {
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'User Management',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'users',
+    'title'      => 'User Management',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'users',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['User Management', '']],
 ]);

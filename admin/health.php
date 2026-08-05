@@ -47,9 +47,12 @@ if (config('app.env') === 'production' && config('app.debug')) {
 }
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-heart-pulse me-2"></i>System Health</h4>
-    <span class="badge bg-<?= $errors === [] ? 'success' : 'danger' ?> fs-6">
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-heart-pulse me-2"></i>System Health</h1>
+        <div class="page-subtitle">Application and infrastructure status</div>
+    </div>
+    <span class="badge fs-6 <?= $errors === [] ? 'bg-success' : 'bg-danger' ?>">
         <?= $errors === [] ? 'ALL SYSTEMS OK' : count($errors) . ' ISSUE(S)' ?>
     </span>
 </div>
@@ -62,8 +65,8 @@ ob_start(); ?>
 
 <div class="row g-3">
     <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-semibold">Environment</div>
+        <div class="card h-100">
+            <div class="card-header">Environment</div>
             <div class="card-body">
                 <table class="table table-sm mb-0">
                     <tr><td class="text-muted">PHP</td><td><?= e($phpVersion) ?></td></tr>
@@ -76,8 +79,8 @@ ob_start(); ?>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white fw-semibold">PHP Extensions</div>
+        <div class="card h-100">
+            <div class="card-header">PHP Extensions</div>
             <div class="card-body">
                 <?php foreach ($extStatus as $ext => $loaded): ?>
                 <span class="badge bg-<?= $loaded ? 'success' : 'danger' ?> me-1 mb-1"><?= e($ext) ?></span>
@@ -86,8 +89,8 @@ ob_start(); ?>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Writable Directories</div>
+        <div class="card">
+            <div class="card-header">Writable Directories</div>
             <div class="card-body">
                 <?php foreach ($dirStatus as $d => $ok): ?>
                 <div class="d-flex justify-content-between mb-2">
@@ -99,8 +102,8 @@ ob_start(); ?>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">API Health</div>
+        <div class="card">
+            <div class="card-header">API Health</div>
             <div class="card-body">
                 <div class="d-flex align-items-center gap-2">
                     <i class="bi bi-wifi fs-3 text-success"></i>
@@ -116,8 +119,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'System Health',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'health',
+    'title'      => 'System Health',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'health',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['System Health', '']],
 ]);

@@ -127,50 +127,52 @@ if ($activeGroupId > 0) {
 $canManage = $user->hasPermission('masters.manage');
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-list-ul me-2"></i>Masters</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
     <div>
+        <h1 class="page-title mb-1"><i class="bi bi-list-ul me-2"></i>Masters</h1>
+        <div class="page-subtitle">Manage master data and location hierarchy</div>
+    </div>
+    <div class="d-flex gap-2">
         <?php if ($canManage): ?>
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newGroupModal"><i class="bi bi-plus-lg me-1"></i>New Master Group</button>
-        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>Import CSV</button>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newGroupModal"><i class="bi bi-plus-lg me-1"></i>New Master Group</button>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>Import CSV</button>
         <?php endif; ?>
     </div>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Master Groups</div>
+<div class="card mb-3">
+            <div class="card-header">Master Groups</div>
             <div class="card-body table-responsive">
-                <table class="table table-sm align-middle mb-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead><tr><th>Name</th><th>Code</th><th class="text-end">Items</th><th></th></tr></thead>
                     <tbody>
-                    <?php if ($groups === []): ?>
-                        <tr><td colspan="4" class="text-center text-muted py-3">No master groups yet.</td></tr>
-                    <?php else: foreach ($groups as $g): ?>
+                    <?php foreach ($groups as $g): ?>
                         <tr class="<?= $activeGroupId === (int) $g['id'] ? 'table-active' : '' ?>">
                             <td><a href="index.php?group_id=<?= (int) $g['id'] ?>" class="fw-semibold text-decoration-none"><?= e($g['name']) ?></a></td>
                             <td><code><?= e($g['code']) ?></code></td>
                             <td class="text-end"><?= (int) $g['item_count'] ?></td>
                             <td class="text-end">
-                                <?php if ($canManage && !(int) $g['is_system']): ?>
+                                <?php if (!(int) $g['is_system']): ?>
                                 <form method="post" class="d-inline" onsubmit="return confirm('Delete this master group and all its items?')">
                                     <input type="hidden" name="action" value="delete_group">
                                     <input type="hidden" name="id" value="<?= (int) $g['id'] ?>">
                                     <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                </form>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                                 </form>
+                                 <?php endif; ?>
+                             </td>
+                         </tr>
+                     <?php endforeach; ?>
+                     </tbody>
+                 </table>
+             </div>
+        </div>
         </div>
 
         <?php if ($activeGroup !== null): ?>
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold"><code><?= e($activeGroup['code']) ?></code> — <?= e($activeGroup['name']) ?></span>
                 <span class="badge bg-secondary"><?= count($items) ?> items</span>
             </div>
@@ -188,52 +190,48 @@ ob_start(); ?>
                         <input type="text" name="code" class="form-control form-control-sm" placeholder="optional">
                     </div>
                     <div class="col-md-3">
-                        <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
+                        <button class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
                     </div>
                 </form>
                 <?php endif; ?>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead><tr><th>Name</th><th>Code</th><th class="text-end">Actions</th></tr></thead>
-                        <tbody>
-                        <?php if ($items === []): ?>
-                            <tr><td colspan="3" class="text-center text-muted py-3">No items in this group yet.</td></tr>
-                        <?php else: foreach ($items as $item): ?>
-                            <tr>
-                                <td class="fw-semibold"><?= e($item['name']) ?></td>
-                                <td><code><?= e($item['code']) ?></code></td>
-                                <td class="text-end">
-                                    <?php if ($canManage): ?>
-                                    <form method="post" class="d-inline" onsubmit="return confirm('Delete this item?')">
-                                        <input type="hidden" name="action" value="delete_item">
-                                        <input type="hidden" name="group_id" value="<?= (int) $activeGroup['id'] ?>">
-                                        <input type="hidden" name="id" value="<?= (int) $item['id'] ?>">
-                                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; endif; ?>
-                        </tbody>
-                    </table>
-                </div>
+<table class="table table-sm table-hover align-middle mb-0 data-table">
+                    <thead><tr><th>Name</th><th>Code</th><th class="text-end">Actions</th></tr></thead>
+                     <tbody>
+                     <?php foreach ($items as $item): ?>
+                        <tr>
+                            <td class="fw-semibold"><?= e($item['name']) ?></td>
+                            <td><code><?= e($item['code']) ?></code></td>
+                            <td class="text-end">
+                                <?php if ($canManage): ?>
+                                <form method="post" class="d-inline" onsubmit="return confirm('Delete this item?')">
+                                    <input type="hidden" name="action" value="delete_item">
+                                    <input type="hidden" name="group_id" value="<?= (int) $activeGroup['id'] ?>">
+                                    <input type="hidden" name="id" value="<?= (int) $item['id'] ?>">
+                                    <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                                <?php endif; ?>
+                             </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
             </div>
         </div>
         <?php endif; ?>
     </div>
 
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Location Hierarchy</div>
+        <div class="card">
+            <div class="card-header">Location Hierarchy</div>
             <div class="card-body table-responsive">
-                <table class="table table-sm align-middle mb-0">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
                     <thead>
                         <tr><th>District</th><th>Blocks</th><th>Panchayats</th><th>Villages</th><th class="text-end">Actions</th></tr>
                     </thead>
                     <tbody>
-                    <?php if ($tree === []): ?>
-                        <tr><td colspan="5" class="text-center text-muted py-4">No location data. Use "Import CSV" to load the hierarchy.</td></tr>
-                    <?php else: foreach ($tree as $d): ?>
+                    <?php foreach ($tree as $d): ?>
                         <tr>
                             <td class="fw-semibold"><?= e($d['name']) ?></td>
                             <td><?= count($d['blocks']) ?></td>
@@ -245,7 +243,7 @@ ob_start(); ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
-                    <?php endforeach; endif; ?>
+                    <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
@@ -279,7 +277,7 @@ ob_start(); ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-success">Create Group</button>
+                <button type="submit" class="btn btn-primary">Create Group</button>
             </div>
         </form>
     </div>
@@ -300,7 +298,7 @@ ob_start(); ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-success">Import</button>
+                <button type="submit" class="btn btn-primary">Import</button>
             </div>
         </form>
     </div>
@@ -324,8 +322,9 @@ function del(type, id) {
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Masters',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'masters',
+    'title'      => 'Masters',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'masters',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Masters', '']],
 ]);

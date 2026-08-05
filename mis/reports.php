@@ -13,6 +13,9 @@ SessionAuth::requirePermission('reports.view');
 $user = SessionAuth::user();
 $service = new ReportService();
 $formId = (int) ($_GET['form_id'] ?? 0);
+if ($formId > 0 && !$user->canAccessForm($formId)) {
+    $formId = 0;
+}
 $report = (string) ($_GET['report'] ?? 'survey_wise');
 
 // CSV export?
@@ -48,12 +51,14 @@ $data = match ($report) {
     'duplicates' => $service->duplicates($user),
     default => $service->surveyWise($user),
 };
+
+ 
 $summary = $service->statusSummary($user);
 $forms = array_values(array_filter(
     \App\Database\Connection::instance()->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll(),
     fn(array $f) => $user->canAccessForm((int) $f['id'])
 ));
-
+ 
 $columns = match ($report) {
     'user_wise' => ['Surveyor', 'Username', 'Total', 'Submitted', 'Published'],
     'district_wise' => ['District', 'Total'],
@@ -64,11 +69,14 @@ $columns = match ($report) {
 };
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</h1>
+        <div class="page-subtitle">Generate and export survey reports</div>
+    </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
+<div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-4">
@@ -91,7 +99,7 @@ ob_start(); ?>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Run</button></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100">Run</button></div>
             <div class="col-md-3 text-end">
                 <a href="reports.php?report=<?= e($report) ?>&form_id=<?= $formId ?>&export=csv" class="btn btn-sm btn-success w-100"><i class="bi bi-download me-1"></i>Export CSV</a>
             </div>
@@ -102,7 +110,7 @@ ob_start(); ?>
 <div class="row g-3 mb-4">
     <?php foreach ($summary as $s): ?>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card stat-card">
             <div class="card-body d-flex align-items-center justify-content-between">
                 <span class="text-muted small text-capitalize"><?= e(str_replace('_', ' ', (string) $s['status'])) ?></span>
                 <span class="badge bg-primary fs-6"><?= number_format((int) $s['c']) ?></span>
@@ -112,17 +120,35 @@ ob_start(); ?>
     <?php endforeach; ?>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold"><?= e(ucwords(str_replace('_', ' ', $report))) ?></div>
-    <div class="card-body table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
-            <thead><tr><?php foreach ($columns as $c): ?><th><?= e($c) ?></th><?php endforeach; ?></tr></thead>
-            <tbody>
-            <?php if ($data === []): ?>
-                <tr><td colspan="<?= count($columns) ?>" class="text-center text-muted py-4">No data.</td></tr>
-            <?php else: foreach ($data as $row): ?>
-                <tr><?php foreach (array_values($row) as $i => $v): ?><td class="<?= $i === 0 ? 'fw-semibold' : '' ?>"><?= e($v === null ? '—' : (string) $v) ?></td><?php endforeach; ?></tr>
-            <?php endforeach; endif; ?>
+<div class="card">
+    <div class="card-header"><?= e(ucwords(str_replace('_', ' ', $report))) ?></div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-sm table-hover align-middle mb-0 data-table">
+            <thead><tr><th>FormID</th><?php  foreach ($columns as $c): ?><th><?= e($c) ?></th><?php endforeach; ?></tr></thead>
+             <tbody>
+             <?php foreach ($data as $row):
+     $fid = (int) ($row['id'] ?? 0);
+ ?>
+<tr>
+    <?php foreach ($row as $key => $value): ?>
+        <td class="<?= $key === 'id' ? 'fw-semibold' : '' ?>">
+            <?php if (
+                !in_array($key, ['id', 'title', 'code']) &&
+                is_numeric($value) &&
+                $fid > 0
+            ): ?>
+                <a href="detail_report.php?form_id=<?= $fid ?>&status=<?= urlencode($key) ?>">
+                    <?= e((string) $value) ?>
+                </a>
+            <?php else: ?>
+                <?= e($value === null ? '0' : (string) $value) ?>
+            <?php endif; ?>
+        </td>
+    <?php endforeach; ?>
+</tr>
+<?php endforeach; ?>
+           
+            
             </tbody>
         </table>
     </div>
@@ -130,8 +156,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Reports',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'reports',
+    'title'      => 'Reports',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'reports',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Reports', '']],
 ]);

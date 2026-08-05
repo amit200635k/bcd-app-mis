@@ -10,12 +10,19 @@ const {
 
 const only = process.argv[2] || 'all'; // mis | admin | all
 
+const PHP_BIN = process.env.PHP_BIN || 'php';
+const BASE_PATH = path.join(__dirname, '..', '..');
+
+// GOVT_BUILDING_SURVEY fixture ids on this machine (fresh DB): the unit survey
+// is form 2; DEPARTMENT + BUILDING_SUBCATEGORY masters are 2 and 3.
+const govt = { form: 2, dept: 2, sub: 3 };
+
 // Reset demo DB state so tests are repeatable (runs php tests/e2e/reset.php).
 function resetDb() {
     const script = path.join(__dirname, 'reset.php');
     console.log('Resetting demo state (php reset.php) …');
     try {
-        execFileSync('php', [script], { stdio: ['ignore', 'pipe', 'inherit'] });
+        execFileSync(PHP_BIN, [script], { stdio: ['ignore', 'pipe', 'inherit'] });
         console.log('Reset done.');
     } catch (e) {
         console.log('Reset failed (continuing anyway): ' + e.message);
@@ -42,6 +49,11 @@ async function misSuite(page) {
     ok('login page loads', await hasText(page, 'BCD Survey Platform'));
     ok('username field present', await page.$('input[name=username]') !== null);
     ok('password field present', await page.$('input[name=password]') !== null);
+    ok('sign-in button present', await page.$('button[type=submit]') !== null);
+    ok('login card rendered', await page.$('.login-card') !== null);
+    ok('login header with gradient', await page.$('.login-header') !== null);
+    ok('brand icon present', await page.$('.brand-icon') !== null);
+    ok('title "MIS Portal" present', await hasText(page, 'MIS Portal'));
     await assertNoPhpWarnings(page, 'login.php');
 
     step('MIS: Reject wrong credentials');
@@ -62,6 +74,31 @@ async function misSuite(page) {
     ]);
     ok('redirected to dashboard', /mis\/dashboard\.php/.test(page.url()));
     await assertNoPhpWarnings(page, 'dashboard.php');
+
+    step('MIS: All roles can login and access their dashboards');
+    for (const role of ['district', 'block', 'panchayat', 'village', 'surveyor']) {
+        await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
+        await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
+        await type(page, 'input[name=username]', CREDS[role].username);
+        await type(page, 'input[name=password]', CREDS[role].password);
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle0' }),
+            page.click('button[type=submit]'),
+        ]);
+        ok(`${role} logged in successfully`, /mis\/dashboard\.php/.test(page.url()) || /mis\/home_/.test(page.url()));
+        await assertNoPhpWarnings(page, 'dashboard.php');
+    }
+
+    // Log back in as admin for remaining tests
+    await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
+    await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
+    await type(page, 'input[name=username]', CREDS.admin.username);
+    await type(page, 'input[name=password]', CREDS.admin.password);
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'networkidle0' }),
+        page.click('button[type=submit]'),
+    ]);
+    await waitForText(page, 'Dashboard');
 
     step('MIS: Dashboard renders stats');
     await waitForText(page, 'Dashboard');
@@ -381,7 +418,7 @@ async function misSuite(page) {
     await assertNoPhpWarnings(page, 'builder/sync.php');
 
     step("MIS: Gov't Building editor loads (form 40)");
-    await page.goto(BASE + '/mis/builder/edit.php?id=40', { waitUntil: 'networkidle0' });
+    await page.goto(BASE + '/mis/builder/edit.php?id=' + govt.form, { waitUntil: 'networkidle0' });
     await page.waitForFunction(() => typeof state !== 'undefined' && state.length >= 17, { timeout: 15000 });
     const govtInfo = await page.evaluate(() => {
         const sections = state.length;
@@ -400,12 +437,12 @@ async function misSuite(page) {
     ok('govt building editor loads 17 sections', govtInfo.sections === 17);
     ok('govt building editor renders 132 fields', govtInfo.fields === 132 && govtInfo.rendered === 132);
     ok('dropdown fields render their options', govtInfo.dropInputs >= 39 && govtInfo.dropWithOptions >= 39);
-    ok('master fields keep their master group', govtInfo.masterSel.length === 3 && govtInfo.masterSel.includes('8') && govtInfo.masterSel.includes('9'));
+    ok('master fields keep their master group', govtInfo.masterSel.length === 3 && govtInfo.masterSel.includes(String(govt.dept)) && govtInfo.masterSel.includes(String(govt.sub)));
     ok('location cascade shows all 4 levels', govtInfo.casc.length === 1 && govtInfo.casc[0].length === 4);
     await assertNoPhpWarnings(page, 'builder/edit.php (govt building)');
 
     step("MIS: Gov't Building preview renders dropdowns");
-    await page.goto(BASE + '/mis/builder/preview.php?id=40', { waitUntil: 'networkidle0' });
+    await page.goto(BASE + '/mis/builder/preview.php?id=' + govt.form, { waitUntil: 'networkidle0' });
     await page.waitForFunction(() => document.querySelectorAll('select').length > 0, { timeout: 10000 });
     const previewInfo = await page.evaluate(() => {
         const selects = Array.from(document.querySelectorAll('select'));
@@ -816,7 +853,7 @@ async function roleDashboardSuite(page) {
 
 /* ============================== ADMIN SUITE ============================== */
 async function adminSuite(page) {
-    step('ADMIN: Login');
+    step('ADMIN: Login via MIS login page');
     await loginAs(page, 'admin');
     ok('admin logged in', /mis\/dashboard\.php/.test(page.url()));
 
@@ -831,6 +868,19 @@ async function adminSuite(page) {
     ok('recent audit table renders', await hasText(page, 'Recent Audit Activity'));
     await assertNoPhpWarnings(page, 'admin/dashboard.php');
 
+    step('ADMIN: Sidebar professional styling');
+    ok('sidebar present', await page.$('.sidebar') !== null);
+    ok('sidebar brand icon', await page.$('.brand-icon') !== null);
+    ok('sidebar collapse toggle', await page.$('#sidebarCollapse') !== null);
+    ok('breadcrumb present', await page.$('.breadcrumb') !== null);
+    ok('user menu present', await page.$('.user-menu') !== null);
+
+    step('ADMIN: Admin panel professional styling');
+    ok('page-title used', await page.$('.page-title') !== null);
+    ok('page-subtitle present', await page.$('.page-subtitle') !== null);
+    ok('stat-card present on dashboard', await page.$('.stat-card') !== null);
+    ok('topbar present', await page.$('.topbar') !== null);
+
     step('ADMIN: Block non-state-admin from admin panel');
     const ctx = await page.browser().createBrowserContext();
     const other = await ctx.newPage();
@@ -841,6 +891,19 @@ async function adminSuite(page) {
     ok('district admin is blocked (403)', /403/.test(body));
     await other.close();
     await ctx.close();
+
+    step('ADMIN: All non-admin roles blocked from admin panel');
+    for (const role of ['district', 'block', 'panchayat', 'village', 'surveyor']) {
+        const ctx2 = await page.browser().createBrowserContext();
+        const p = await ctx2.newPage();
+        wirePage(p, `admin-blocked-${role}`);
+        await loginAs(p, role);
+        await p.goto(BASE + '/admin/dashboard.php', { waitUntil: 'networkidle0' });
+        const b = await p.evaluate(() => document.body.innerText).catch(() => '');
+        ok(`${role} blocked from admin panel`, /403/.test(b));
+        await p.close();
+        await ctx2.close();
+    }
 
     step('ADMIN: Roles & Access page');
     await page.goto(BASE + '/admin/access.php', { waitUntil: 'networkidle0' });

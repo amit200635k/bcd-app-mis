@@ -180,7 +180,7 @@ if ($gbs !== false) {
 
 // 9. Portal & form access helpers
 $usvc = new UserService();
-$sk = User::find(5);
+$sk = User::findByUsername('sk_district');
 check('Demo user has mis portal', $sk !== null && $sk->hasPortal('mis'));
 check('Demo user form access assigned', $sk !== null && in_array((int) $gbs['id'], $sk->assignedFormIds(), true));
 $admin = User::find(1);
@@ -188,7 +188,7 @@ check('State admin implicit all portals', $admin->hasPortal('admin') && $admin->
 check('State admin implicit all forms', $admin->canAccessForm((int) $gbs['id']));
 
 // 10. Scope enforcement
-$blockAdmin = User::find(4);
+$blockAdmin = User::findByUsername('jb_block');
 $assignable = $usvc->assignableRoles($blockAdmin);
 $codes = array_column($assignable, 'code');
 check('Block admin cannot assign district role', !in_array('district', $codes, true) && in_array('surveyor', $codes, true), implode(',', $codes));
@@ -234,7 +234,7 @@ $fkRecordId = (int) $fkRec['record_id'];
 $fkRow = $pdo->query('SELECT submitted_by FROM survey_records WHERE id = ' . $fkRecordId)->fetch();
 check('upsert sets submitted_by to submitter', (int) $fkRow['submitted_by'] === $fkId, json_encode($fkRow));
 
-$blockAdmin = User::find(4); // jb_block, block 77 / district 20
+$blockAdmin = User::findByUsername('jb_block'); // jb_block, block 77 / district 20
 $fkRecFull = $pdo->query('SELECT * FROM survey_records WHERE id = ' . $fkRecordId)->fetch();
 check('Block admin cannot view foreign-district record', !$recordSvc->canView($blockAdmin, $fkRecFull));
 check('State admin can view any record', $recordSvc->canView($admin, $fkRecFull));
@@ -247,9 +247,9 @@ $adminList = $recordSvc->listRecords($formId, '', 1, 50, $admin);
 $adminUuids = array_column($adminList['records'], 'record_uuid');
 check('State admin list includes foreign record', in_array($fkRec['record_uuid'], $adminUuids, true));
 
-$surveyor = User::find(3); // rk_surveyor (leaf)
+$surveyor = User::findByUsername('rk_surveyor'); // rk_surveyor (leaf)
 check('Surveyor scope is own id only', $recordSvc->scopeUserIds($surveyor) === [$surveyor->id()]);
-check('Block admin scope is block users + self', in_array(3, $recordSvc->scopeUserIds($blockAdmin), true) && !in_array($fkId, $recordSvc->scopeUserIds($blockAdmin), true));
+check('Block admin scope is block users + self', in_array($surveyor->id(), $recordSvc->scopeUserIds($blockAdmin), true) && !in_array($fkId, $recordSvc->scopeUserIds($blockAdmin), true));
 
 $detail = $recordSvc->find($fkRecordId);
 check('Record detail returns labelled answers', $detail !== null && ($detail['answers'][0]['field_label'] ?? '') !== '', json_encode($detail['answers'][0] ?? null));
@@ -289,6 +289,13 @@ $smokeRow = static fn(array $rows) => (int) array_reduce(
 $adminTotal = $smokeRow($adminReport);
 $blockTotal = $smokeRow($blockReport);
 check('Reports scoped to viewer hierarchy', $adminTotal >= 2 && $blockTotal === 0, "admin={$adminTotal} block={$blockTotal}");
+
+// 14b. Reports scoped to viewer's form access (district user assigned only one form).
+$skReport = $reportSvc->surveyWise($sk);
+$skFormIds = array_map('intval', $sk->assignedFormIds());
+$skReportFormIds = array_map('intval', array_column($skReport, 'id'));
+$skOnlyAssigned = count(array_diff($skReportFormIds, $skFormIds)) === 0;
+check('District user report only shows assigned forms', $skOnlyAssigned, json_encode(['assigned' => $skFormIds, 'report' => $skReportFormIds]));
 
 // 15. Detailed, filterable report (pivoted answers) + KPIs.
 $locRec = $recordSvc->upsert($admin->id(), [
@@ -345,8 +352,15 @@ if ($f40 > 0) {
             }
         }
         if (isset($f40Cols['built_up_area'])) {
+            $rangeExpected = 0;
+            foreach ($f40All as $ar) {
+                $v = (string) ($ar['built_up_area'] ?? '');
+                if (preg_match('/^[0-9]+([.][0-9]+)?$/', $v) && (float) $v >= 0 && (float) $v <= 1000000) {
+                    $rangeExpected++;
+                }
+            }
             $rangeFiltered = $reportSvc->detailReport(['form_id' => $f40, 'viewer' => $admin, 'built_up_area_min' => 0, 'built_up_area_max' => 1000000], 1000, 0);
-            check('Detail range filter: built_up_area min/max applied', count($rangeFiltered) === $f40Count, 'all=' . $f40Count . ' range=' . count($rangeFiltered));
+            check('Detail range filter: built_up_area min/max applied', count($rangeFiltered) === $rangeExpected, 'all=' . $f40Count . ' expected=' . $rangeExpected . ' range=' . count($rangeFiltered));
         }
 
         $kpiAll = $reportSvc->detailKpis(['form_id' => $f40, 'viewer' => $admin]);

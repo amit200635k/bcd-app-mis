@@ -39,23 +39,24 @@ $queue = $pdo->query(
 $configs = $pdo->query('SELECT id, name, db_type, host, database_name, enabled, last_success_at FROM external_db_configs ORDER BY id')->fetchAll();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>Replication Monitor</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
     <div>
+        <h1 class="page-title mb-1"><i class="bi bi-arrow-repeat me-2"></i>Replication Monitor</h1>
+        <div class="page-subtitle">Monitor external database sync and replication queue</div>
+    </div>
+    <div class="d-flex gap-2">
         <a href="replication.php?action=retry" class="btn btn-sm btn-outline-danger" onclick="return confirm('Re-queue all failed jobs?')"><i class="bi bi-arrow-counterclockwise me-1"></i>Retry Failed</a>
-        <a href="replication.php?action=drain" class="btn btn-sm btn-dark" onclick="return confirm('Drain the queue now?')"><i class="bi bi-play-fill me-1"></i>Drain Queue</a>
+        <a href="replication.php?action=drain" class="btn btn-sm btn-primary" onclick="return confirm('Drain the queue now?')"><i class="bi bi-play-fill me-1"></i>Drain Queue</a>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white fw-semibold">External Database Targets</div>
-    <div class="card-body table-responsive">
-        <table class="table table-sm align-middle mb-0">
+<div class="card mb-3">
+    <div class="card-header">External Database Targets</div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-sm table-hover align-middle mb-0 data-table">
             <thead><tr><th>Name</th><th>Type</th><th>Host</th><th>Database</th><th>Status</th><th>Last Success</th></tr></thead>
             <tbody>
-            <?php if ($configs === []): ?>
-                <tr><td colspan="6" class="text-center text-muted py-3">No external database configured.</td></tr>
-            <?php else: foreach ($configs as $c): ?>
+            <?php foreach ($configs as $c): ?>
                 <tr>
                     <td><?= e($c['name']) ?></td>
                     <td><span class="badge bg-secondary text-uppercase"><?= e($c['db_type']) ?></span></td>
@@ -64,21 +65,19 @@ ob_start(); ?>
                     <td><?= $c['enabled'] ? '<span class="badge bg-success">enabled</span>' : '<span class="badge bg-secondary">disabled</span>' ?></td>
                     <td class="text-muted small"><?= $c['last_success_at'] ? date('d M H:i', strtotime((string) $c['last_success_at'])) : '—' ?></td>
                 </tr>
-            <?php endforeach; endif; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold">Replication Queue (last 30)</div>
-    <div class="card-body table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
+<div class="card">
+    <div class="card-header">Replication Queue (last 30)</div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-sm table-hover align-middle mb-0 data-table">
             <thead><tr><th>#</th><th>Entity</th><th>Op</th><th>Status</th><th>Attempts</th><th>Error</th><th>Created</th></tr></thead>
             <tbody>
-            <?php if ($queue === []): ?>
-                <tr><td colspan="7" class="text-center text-muted py-4">Queue is empty.</td></tr>
-            <?php else: foreach ($queue as $q): ?>
+            <?php foreach ($queue as $q): ?>
                 <tr>
                     <td><?= (int) $q['id'] ?></td>
                     <td><code><?= e($q['entity_type']) ?> #<?= e($q['entity_id']) ?></code></td>
@@ -93,7 +92,7 @@ ob_start(); ?>
                     <td class="text-muted small" title="<?= e((string) $q['error_message']) ?>"><?= e(mb_strimwidth((string) ($q['error_message'] ?? '—'), 0, 40, '…')) ?></td>
                     <td class="text-muted small"><?= date('d M H:i', strtotime((string) $q['created_at'])) ?></td>
                 </tr>
-            <?php endforeach; endif; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
     </div>
@@ -101,8 +100,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Replication Monitor',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'replication',
+    'title'      => 'Replication Monitor',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'replication',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['Replication', '']],
 ]);

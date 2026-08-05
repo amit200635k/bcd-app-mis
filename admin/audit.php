@@ -40,25 +40,26 @@ $stmt->execute($params);
 $logs = $stmt->fetchAll();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>Audit Logs</h4>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-journal-text me-2"></i>Audit Logs</h1>
+        <div class="page-subtitle">Track system activity and user actions</div>
+    </div>
 </div>
 
-<div class="card border-0 shadow-sm">
+<div class="card">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end mb-3">
             <div class="col-md-4">
-                <input type="text" name="action" class="form-control form-control-sm" value="<?= e($action) ?>" placeholder="Filter by action…">
+                <input type="text" name="action" class="form-control" value="<?= e($action) ?>" placeholder="Filter by action…">
             </div>
-            <div class="col-md-2"><button class="btn btn-sm btn-dark w-100">Filter</button></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100">Filter</button></div>
         </form>
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0 data-table">
                 <thead><tr><th>#</th><th>User</th><th>Action</th><th>Module</th><th>Entity</th><th>IP</th><th>Time</th></tr></thead>
                 <tbody>
-                <?php if ($logs === []): ?>
-                    <tr><td colspan="7" class="text-center text-muted py-4">No audit logs.</td></tr>
-                <?php else: foreach ($logs as $a): ?>
+                <?php foreach ($logs as $a): ?>
                     <tr>
                         <td><?= (int) $a['id'] ?></td>
                         <td><?= e((string) ($a['user'] ?? 'system')) ?></td>
@@ -68,7 +69,7 @@ ob_start(); ?>
                         <td class="text-muted small"><?= e((string) ($a['ip_address'] ?? '—')) ?></td>
                         <td class="text-muted small"><?= date('d M Y H:i:s', strtotime((string) $a['created_at'])) ?></td>
                     </tr>
-                <?php endforeach; endif; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -89,8 +90,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Audit Logs',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'audit',
+    'title'      => 'Audit Logs',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'audit',
+    'breadcrumb' => [['Admin', 'dashboard.php'], ['Audit Logs', '']],
 ]);

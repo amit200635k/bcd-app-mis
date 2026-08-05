@@ -103,12 +103,14 @@ unset($exportQuery['viewer']);
 $exportUrl = 'detail_report.php?' . http_build_query(array_merge($exportQuery, ['export' => 'csv']));
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-table me-2"></i>Detailed Report</h4>
-    <span class="text-muted small"><i class="bi bi-shield-check me-1"></i>Showing data within your scope (your own + sub-users' records)</span>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-table me-2"></i>Detailed Report</h1>
+        <div class="page-subtitle">Showing data within your scope (your own + sub-users' records)</div>
+    </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-3">
+<div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-3">
@@ -169,9 +171,9 @@ ob_start(); ?>
                 <input type="text" name="keyword" value="<?= e($filters['keyword']) ?>" class="form-control form-control-sm" placeholder="Building name / code / UUID">
             </div>
             <div class="col-md-4 d-flex gap-2">
-                <button class="btn btn-sm btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Run</button>
-                <a href="detail_report.php?form_id=<?= $formId ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Reset</a>
-                <a href="<?= e($exportUrl) ?>" class="btn btn-sm btn-success flex-fill"><i class="bi bi-download me-1"></i>Export CSV</a>
+                <button class="btn btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Run</button>
+                <a href="detail_report.php?form_id=<?= $formId ?>" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Reset</a>
+                <a href="<?= e($exportUrl) ?>" class="btn btn-success flex-fill"><i class="bi bi-download me-1"></i>Export CSV</a>
             </div>
             <?php if ($filterable !== []): ?>
             <div class="col-12">
@@ -211,77 +213,77 @@ ob_start(); ?>
 </div>
 
 <?php if ($formId === 0): ?>
-<div class="card border-0 shadow-sm">
+<div class="card">
     <div class="card-body text-center text-muted py-5">Select a survey form to view its detailed records.</div>
 </div>
 <?php else: ?>
 
 <div class="row g-3 mb-4">
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Total Buildings</div>
             <div class="fs-3 fw-bold"><?= number_format($kpis['total']) ?></div>
             <div class="small text-muted"><?= count($districts) ?> district<?= count($districts) === 1 ? '' : 's' ?> covered</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Submitted</div>
             <div class="fs-3 fw-bold text-info"><?= number_format($kpis['submitted']) ?></div>
             <div class="small text-muted">awaiting verification</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Verified</div>
             <div class="fs-3 fw-bold text-primary"><?= number_format($kpis['verified']) ?></div>
             <div class="small text-muted">block / district verified</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Approved / Published</div>
             <div class="fs-3 fw-bold text-success"><?= number_format($kpis['approved']) ?></div>
             <div class="small text-muted">final status</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Rejected</div>
             <div class="fs-3 fw-bold text-danger"><?= number_format($kpis['rejected']) ?></div>
             <div class="small text-muted">sent back for re-survey</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Total Built-up Area</div>
             <div class="fs-3 fw-bold"><?= number_format($kpis['built_up_total']) ?> <span class="fs-6 text-muted">sqm</span></div>
             <div class="small text-muted">avg <?= number_format($kpis['avg_built_up'], 1) ?> sqm / building</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Total Rooms</div>
             <div class="fs-3 fw-bold"><?= number_format($kpis['rooms_total']) ?></div>
             <div class="small text-muted">rooms across all buildings</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Departments</div>
             <div class="fs-3 fw-bold text-primary"><?= number_format($kpis['departments']) ?></div>
             <div class="small text-muted">in filtered set</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Categories</div>
             <div class="fs-3 fw-bold text-info"><?= number_format($kpis['categories']) ?></div>
             <div class="small text-muted">building categories</div>
         </div></div>
     </div>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="card stat-card h-100"><div class="card-body">
             <div class="text-muted small text-uppercase">Latest Submission</div>
             <?php if ($latest): ?>
             <div class="fw-semibold text-truncate" title="<?= e($latest['building_name'] ?? $latest['record_uuid']) ?>">
@@ -295,13 +297,13 @@ ob_start(); ?>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-buildings me-2"></i>Records (<?= number_format($kpis['total']) ?>)</span>
         <span class="text-muted small">Showing latest <?= count($rows) ?> rows</span>
     </div>
-    <div class="card-body table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
+    <div class="card-body table-responsive p-0">
+        <table class="table table-sm table-hover align-middle mb-0 data-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -316,10 +318,8 @@ ob_start(); ?>
                     <th></th>
                 </tr>
             </thead>
-            <tbody>
-            <?php if ($rows === []): ?>
-                <tr><td colspan="<?= 6 + count($cols) ?>" class="text-center text-muted py-4">No records match the selected filters.</td></tr>
-            <?php else: foreach ($rows as $r): ?>
+             <tbody>
+             <?php foreach ($rows as $r): ?>
                 <tr>
                     <td class="text-muted small">#<?= (int) $r['id'] ?></td>
                     <td class="fw-semibold"><a class="text-decoration-none" href="records.php?id=<?= (int) $r['id'] ?>"><?= e((string) ($r['building_name'] ?? '—')) ?></a></td>
@@ -339,7 +339,7 @@ ob_start(); ?>
                     <td class="small text-muted"><?= date('d M Y', strtotime((string) $r['created_at'])) ?></td>
                     <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="records.php?id=<?= (int) $r['id'] ?>" title="View"><i class="bi bi-eye"></i></a></td>
                 </tr>
-            <?php endforeach; endif; ?>
+             <?php endforeach; ?>
             </tbody>
         </table>
     </div>
@@ -348,8 +348,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Detailed Report',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'detail_report',
+    'title'      => 'Detailed Report',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'detail_report',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Detailed Report', '']],
 ]);

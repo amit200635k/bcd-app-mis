@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node tests/e2e/run.js",
     "test:mis": "node tests/e2e/run.js mis",
-    "test:admin": "node tests/e2e/run.js admin"
+    "test:admin": "node tests/e2e/run.js admin",
+    "test:login": "node tests/e2e/login_test.js"
   },
   "dependencies": {
     "puppeteer": "^23.0.0"

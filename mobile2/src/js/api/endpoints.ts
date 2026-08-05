@@ -1,0 +1,23 @@
+export const ENDPOINTS = {
+  auth: {
+    login: '/auth/login',
+    refresh: '/auth/refresh',
+    logout: '/auth/logout',
+    me: '/auth/me',
+  },
+  forms: '/forms',
+  form: (identifier: string | number): string => `/forms/${identifier}`,
+  masters: '/masters',
+  locations: '/masters/locations',
+  locationScope: '/location/scope',
+  records: '/records',
+  recordPhotos: (id: number): string => `/records/${id}/photos`,
+  recordStatus: (id: number): string => `/records/${id}/status`,
+  devices: '/devices',
+  syncStatus: '/sync/status',
+  notifications: '/notifications',
+  notificationsUnread: '/notifications/unread',
+  notificationRead: (id: number): string => `/notifications/${id}/read`,
+  health: '/health',
+  version: '/version',
+};

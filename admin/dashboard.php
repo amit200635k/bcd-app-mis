@@ -35,9 +35,12 @@ $recentAudit = $pdo->query(
 )->fetchAll();
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-speedometer2 me-2"></i>Admin Dashboard</h4>
-    <span class="text-muted small"><?= date('d M Y, h:i A') ?></span>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="page-title mb-1"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
+        <div class="page-subtitle">System overview &amp; recent activity</div>
+    </div>
+    <span class="text-muted small mt-1 d-none d-md-block"><?= date('d M Y, h:i A') ?></span>
 </div>
 
 <div class="row g-3 mb-4">
@@ -54,12 +57,14 @@ ob_start(); ?>
     ];
     foreach ($cards as [$label, $val, $icon, $color]): ?>
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm">
+        <div class="card stat-card">
             <div class="card-body d-flex align-items-center gap-3">
-                <i class="bi <?= $icon ?> fs-1 text-<?= $color ?>"></i>
+                <div class="stat-icon bg-<?= $color ?> bg-opacity-10 text-<?= $color ?>">
+                    <i class="bi <?= $icon ?>"></i>
+                </div>
                 <div>
-                    <div class="fs-4 fw-bold"><?= e((string) $val) ?></div>
-                    <div class="text-muted small"><?= e($label) ?></div>
+                    <div class="stat-value"><?= e((string) $val) ?></div>
+                    <div class="stat-label"><?= e($label) ?></div>
                 </div>
             </div>
         </div>
@@ -67,15 +72,16 @@ ob_start(); ?>
     <?php endforeach; ?>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold">Recent Audit Activity</div>
-    <div class="card-body table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Recent Audit Activity</span>
+        <a href="audit.php" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-hover align-middle mb-0 data-table">
             <thead><tr><th>#</th><th>Action</th><th>Module</th><th>User</th><th>IP</th><th>Time</th></tr></thead>
             <tbody>
-            <?php if ($recentAudit === []): ?>
-                <tr><td colspan="6" class="text-center text-muted py-3">No audit entries yet.</td></tr>
-            <?php else: foreach ($recentAudit as $a): ?>
+            <?php foreach ($recentAudit as $a): ?>
                 <tr>
                     <td><?= (int) $a['id'] ?></td>
                     <td><code><?= e($a['action']) ?></code></td>
@@ -84,7 +90,7 @@ ob_start(); ?>
                     <td class="text-muted"><?= e((string) ($a['ip_address'] ?? '—')) ?></td>
                     <td class="text-muted small"><?= date('d M H:i:s', strtotime((string) $a['created_at'])) ?></td>
                 </tr>
-            <?php endforeach; endif; ?>
+            <?php endforeach; ?>
             </tbody>
         </table>
     </div>
@@ -92,8 +98,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('admin_layout', [
-    'title'   => 'Admin Dashboard',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'dashboard',
+    'title'      => 'Admin Dashboard',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'dashboard',
+    'breadcrumb' => [['Dashboard', '']],
 ]);

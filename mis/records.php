@@ -65,23 +65,23 @@ $answerValue = static function (array $a): string {
 };
 
 ob_start(); ?>
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-start mb-4">
     <div>
-        <h4 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Record Detail</h4>
+        <h1 class="page-title mb-1"><i class="bi bi-file-earmark-text me-2"></i>Record Detail</h1>
         <span class="text-muted small"><code><?= e($record['record_uuid']) ?></code> — #<?= (int) $record['id'] ?></span>
     </div>
-    <a href="monitoring.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Monitoring</a>
+    <a href="monitoring.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Monitoring</a>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-8">
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Submitted Answers</div>
+        <div class="card mb-3">
+            <div class="card-header">Submitted Answers</div>
             <div class="card-body table-responsive">
                 <?php if ($record['answers'] === []): ?>
                 <p class="text-muted text-center py-4 mb-0">No answers recorded for this record.</p>
                 <?php else: ?>
-                <table class="table table-sm align-middle mb-0">
+                <table class="table table-sm align-middle mb-0 data-table">
                     <tbody>
                     <?php foreach ($record['answers'] as $a): ?>
                         <tr>
@@ -98,8 +98,8 @@ ob_start(); ?>
         </div>
 
         <?php if ($record['images'] !== []): ?>
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Attached Files (<?= count($record['images']) ?>)</div>
+        <div class="card mb-3">
+            <div class="card-header">Attached Files (<?= count($record['images']) ?>)</div>
             <div class="card-body">
                 <div class="d-flex flex-wrap gap-3">
                 <?php foreach ($record['images'] as $img): ?>
@@ -126,8 +126,8 @@ ob_start(); ?>
     </div>
 
     <div class="col-lg-4">
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Details</div>
+        <div class="card mb-3">
+            <div class="card-header">Details</div>
             <div class="card-body">
                 <dl class="row small mb-0">
                     <dt class="col-5 text-muted">Form</dt>
@@ -145,8 +145,8 @@ ob_start(); ?>
         </div>
 
         <?php if ($record['gps'] !== []): ?>
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">GPS Logs</div>
+        <div class="card mb-3">
+            <div class="card-header">GPS Logs</div>
             <div class="card-body">
                 <table class="table table-sm small mb-0">
                     <thead><tr><th>Lat</th><th>Lng</th><th>Captured</th></tr></thead>
@@ -165,8 +165,8 @@ ob_start(); ?>
         <?php endif; ?>
 
         <?php if ($record['workflow'] !== []): ?>
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">Workflow History</div>
+        <div class="card">
+            <div class="card-header">Workflow History</div>
             <div class="card-body">
                 <ul class="list-unstyled small mb-0">
                 <?php foreach ($record['workflow'] as $w): ?>
@@ -185,8 +185,9 @@ ob_start(); ?>
 <?php $content = ob_get_clean();
 
 echo view('layout', [
-    'title'   => 'Record Detail',
-    'content' => $content,
-    'user'    => $user,
-    'page'    => 'monitoring',
+    'title'      => 'Record Detail',
+    'content'    => $content,
+    'user'       => $user,
+    'page'       => 'monitoring',
+    'breadcrumb' => [['MIS', $user->homeUrl()], ['Monitoring', 'monitoring.php'], ['Record Detail', '']],
 ]);

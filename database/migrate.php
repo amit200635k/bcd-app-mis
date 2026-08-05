@@ -48,7 +48,7 @@ function runSqlFile(PDO $pdo, string $file, string $label): void
     echo "[OK] {$label}: {$count} statements executed." . PHP_EOL;
 }
 
-/** Split SQL on top-level semicolons (ignores those inside strings). */
+/** Split SQL on top-level semicolons (ignores those inside strings and comments). */
 function splitStatements(string $sql): array
 {
     $statements = [];
@@ -58,6 +58,25 @@ function splitStatements(string $sql): array
     $len = strlen($sql);
     for ($i = 0; $i < $len; $i++) {
         $ch = $sql[$i];
+
+        // Line comment "//" or "--" (skip to end of line; MySQL also uses "#").
+        if (!$inString && ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-') || (!$inString && $ch === '#')) {
+            while ($i < $len && $sql[$i] !== "\n") {
+                $i++;
+            }
+            continue;
+        }
+
+        // Block comment "/* ... */".
+        if (!$inString && $ch === '/' && $i + 1 < $len && $sql[$i + 1] === '*') {
+            $i += 2;
+            while ($i + 1 < $len && !($sql[$i] === '*' && $sql[$i + 1] === '/')) {
+                $i++;
+            }
+            $i++;
+            continue;
+        }
+
         $buffer .= $ch;
         if ($inString) {
             if ($ch === '\\' && $i + 1 < $len) {
@@ -82,7 +101,7 @@ function splitStatements(string $sql): array
     if (trim($buffer) !== '') {
         $statements[] = trim($buffer);
     }
-    return $statements;
+    return array_values(array_filter($statements));
 }
 
 try {
