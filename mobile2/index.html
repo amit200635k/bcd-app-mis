@@ -9,6 +9,51 @@
     <title>BCD Survey</title>
   </head>
   <body>
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <nav class="drawer" id="drawer">
+      <div class="drawer-header">
+        <div class="drawer-user" id="drawer-user">
+          <div class="drawer-avatar">👤</div>
+          <div class="drawer-user-info">
+            <div class="drawer-user-name" id="drawer-user-name">Surveyor</div>
+            <div class="drawer-user-role" id="drawer-user-role"></div>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-nav">
+        <a class="drawer-item" data-to="home" href="#/home">
+          <span class="drawer-icon">🏠</span>
+          <span>Home</span>
+        </a>
+        <a class="drawer-item" data-to="forms" href="#/forms">
+          <span class="drawer-icon">📋</span>
+          <span>Surveys</span>
+        </a>
+        <a class="drawer-item" data-to="records" href="#/records">
+          <span class="drawer-icon">🗂️</span>
+          <span>My Records</span>
+        </a>
+        <a class="drawer-item" data-to="sync" href="#/sync">
+          <span class="drawer-icon">🔄</span>
+          <span>Sync</span>
+        </a>
+        <a class="drawer-item" data-to="notifications" href="#/notifications">
+          <span class="drawer-icon">🔔</span>
+          <span>Notifications</span>
+        </a>
+        <a class="drawer-item" data-to="settings" href="#/settings">
+          <span class="drawer-icon">⚙️</span>
+          <span>Settings</span>
+        </a>
+      </div>
+      <div class="drawer-footer">
+        <button type="button" class="drawer-item drawer-logout" id="btn-drawer-logout">
+          <span class="drawer-icon">🚪</span>
+          <span>Sign out</span>
+        </button>
+      </div>
+    </nav>
+
     <div id="app" class="app-shell">
       <div id="offline-banner" class="offline-banner d-none">
         You are offline — changes are saved and will sync automatically
@@ -16,6 +61,7 @@
       <div id="topbar"></div>
       <main class="container py-4" id="view-root"></main>
     </div>
+    <script src="/custom.js"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

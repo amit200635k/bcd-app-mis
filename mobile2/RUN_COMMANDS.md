@@ -184,14 +184,10 @@ cd D:\Xampp\htdocs\bcd-app\mobile2
 npm run sync
 
 # 2. Build APK (JDK 21)
-$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot'
-& .\android\gradlew.bat -p .\android assembleDebug
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot' & .\android\gradlew.bat -p .\android assembleDebug
 
 # 3. Install + re-tunnel + launch (LDPlayer must be running)
-$adb = "D:\LDPlayer\LDPlayer9\adb.exe"
-& $adb -s emulator-5554 install -r android\app\build\outputs\apk\debug\app-debug.apk
-& $adb -s emulator-5554 reverse tcp:8080 tcp:81
-& $adb -s emulator-5554 shell am start -n com.jsac_bcd_survey.app/.MainActivity
+$adb = "D:\LDPlayer\LDPlayer9\adb.exe" & $adb -s emulator-5554 install -r android\app\build\outputs\apk\debug\app-debug.apk & $adb -s emulator-5554 reverse tcp:8080 tcp:81 & $adb -s emulator-5554 shell am start -n com.jsac_bcd_survey.app/.MainActivity
 ```
 
 ---

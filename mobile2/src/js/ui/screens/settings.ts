@@ -1,6 +1,6 @@
 import { currentUser } from '../../auth';
 import { getDeviceId } from '../../native/device';
-import { API_BASE_URL, APP_NAME, APP_VERSION } from '../../config';
+import { getApiBaseUrl, APP_NAME, APP_VERSION } from '../../config';
 import { navigate } from '../router';
 
 export async function renderSettings(root: HTMLElement): Promise<void> {
@@ -18,7 +18,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
           <dt class="col-5 text-muted">Device id</dt>
           <dd class="col-7 mb-1 font-monospace">${deviceId}</dd>
           <dt class="col-5 text-muted">Server</dt>
-          <dd class="col-7 mb-0 font-monospace text-break">${API_BASE_URL}</dd>
+          <dd class="col-7 mb-0 font-monospace text-break">${getApiBaseUrl()}</dd>
         </dl>
       </div>
     </div>

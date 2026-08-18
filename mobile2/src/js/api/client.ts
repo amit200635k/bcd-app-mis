@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { getApiBaseUrl } from '../config';
 import { ENDPOINTS } from './endpoints';
 import { clearTokens, getTokens, saveTokens } from './session';
 
@@ -63,7 +63,7 @@ export async function refreshAccessToken(): Promise<boolean> {
 }
 
 async function rawFetch<T>(path: string, opts: RequestOptions): Promise<T> {
-  const url = API_BASE_URL + path;
+  const url = getApiBaseUrl() + path;
   const headers: Record<string, string> = {};
   if (opts.formData) {
     // browser sets multipart boundary automatically

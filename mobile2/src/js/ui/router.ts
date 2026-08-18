@@ -1,4 +1,4 @@
-import { isLoggedIn, logout } from '../auth';
+import { isLoggedIn, logout, currentUser } from '../auth';
 import { renderLogin } from './screens/login';
 import { renderHome } from './screens/home';
 import { renderForms } from './screens/forms';
@@ -38,8 +38,35 @@ const ROUTES: Route[] = [
 
 const viewRoot = document.getElementById('view-root') as HTMLElement;
 const topbarEl = document.getElementById('topbar') as HTMLElement;
+const drawerEl = document.getElementById('drawer') as HTMLElement;
+const overlayEl = document.getElementById('drawer-overlay') as HTMLElement;
+
+/** Closes the drawer if open. */
+export function closeDrawer(): void {
+  drawerEl.classList.remove('open');
+  overlayEl.classList.remove('open');
+}
+
+/** Opens the drawer. */
+export function openDrawer(): void {
+  drawerEl.classList.add('open');
+  overlayEl.classList.add('open');
+}
+
+/** Populate drawer with user info and highlight active route. */
+export async function refreshDrawer(activeRoute: string): Promise<void> {
+  const user = await currentUser();
+  const nameEl = document.getElementById('drawer-user-name');
+  const roleEl = document.getElementById('drawer-user-role');
+  if (nameEl) nameEl.textContent = user?.full_name || user?.username || 'Surveyor';
+  if (roleEl) roleEl.textContent = user?.role || '';
+  drawerEl.querySelectorAll('.drawer-item[data-to]').forEach((el) => {
+    el.classList.toggle('active', el.getAttribute('data-to') === activeRoute);
+  });
+}
 
 export function navigate(to: string): void {
+  closeDrawer();
   if (location.hash === `#/${to}`) {
     void route();
   } else {
@@ -47,17 +74,25 @@ export function navigate(to: string): void {
   }
 }
 
-function topbar(title: string, showLogout: boolean): void {
+function topbar(title: string, showAuth: boolean, showLogout: boolean): void {
   topbarEl.innerHTML = `
     <header class="topbar">
+      ${showAuth ? '<button type="button" class="topbar-hamburger" id="btn-hamburger" aria-label="Menu">&#9776;</button>' : ''}
       <div class="topbar-title" id="topbar-title">${title}</div>
       <div class="d-flex align-items-center gap-2">
         ${showLogout ? '<button type="button" class="btn btn-sm btn-light" id="btn-logout">Sign out</button>' : ''}
       </div>
     </header>`;
+
+  const hamburger = topbarEl.querySelector('#btn-hamburger');
+  if (hamburger) {
+    hamburger.addEventListener('click', openDrawer);
+  }
+
   const btn = topbarEl.querySelector('#btn-logout');
   if (btn) {
     btn.addEventListener('click', () => {
+      closeDrawer();
       void logout().finally(() => navigate('login'));
     });
   }
@@ -89,7 +124,12 @@ export async function route(): Promise<void> {
   }
 
   document.title = `${matched.title} — ${APP_NAME}`;
-  topbar(matched.title, matched.requiresAuth);
+  topbar(matched.title, matched.requiresAuth, matched.requiresAuth);
   viewRoot.innerHTML = '';
+
+  if (matched.requiresAuth) {
+    await refreshDrawer(hash === '' ? 'home' : hash.split('/')[0]);
+  }
+
   await matched.screen(viewRoot, params);
 }
