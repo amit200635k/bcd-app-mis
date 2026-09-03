@@ -77,6 +77,9 @@ final class ConditionEvaluator
                 if (($evaluated['visible'][$key] ?? true) === false) {
                     continue; // hidden fields are never required
                 }
+                if (($field['type'] ?? '') === 'auto_number') {
+                    continue; // stamped by RecordService at persist time — never client-required
+                }
                 $required = (bool) ($field['is_mandatory'] ?? 0) || !empty($evaluated['required'][$key]);
                 if (!$required) {
                     continue;

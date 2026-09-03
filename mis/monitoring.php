@@ -46,14 +46,18 @@ if (in_array($action, ['verify', 'approve', 'publish', 'reject'], true)) {
 }
 
 $formId = (int) ($_GET['form_id'] ?? 0);
-$status = (string) ($_GET['status'] ?? 'submitted');
+$status = (string) ($_GET['status'] ?? '');
 $page = max(1, (int) ($_GET['page'] ?? 1));
+$search = trim((string) ($_GET['q'] ?? ''));
 
-$result = $recordService->listRecords($formId ?: null, $status, $page, 25, $user);
+$result = $recordService->listRecords($formId ?: null, $status, $page, 25, $user, $search);
 $forms = array_values(array_filter(
     $pdo->query('SELECT id, title FROM survey_forms ORDER BY title')->fetchAll(),
     fn(array $f) => $user->canAccessForm((int) $f['id'])
 ));
+
+
+// print_r($result);
 
 ob_start(); ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
@@ -78,10 +82,15 @@ ob_start(); ?>
             <div class="col-md-3">
                 <label class="form-label small mb-1">Status</label>
                 <select name="status" class="form-select form-select-sm">
+                    <option value="" <?= $status === "" ? 'selected' : '' ?>><?= e(ucwords('All')) ?></option>
                     <?php foreach (RecordService::STATUSES as $s): ?>
                     <option value="<?= $s ?>" <?= $status === $s ? 'selected' : '' ?>><?= e(ucwords(str_replace('_', ' ', $s))) ?></option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">Search (Survey ID / UUID / Surveyor)</label>
+                <input type="text" name="q" class="form-control form-control-sm" value="<?= e($search) ?>" placeholder="e.g. JH/20/08/26/0003/4821">
             </div>
             <div class="col-md-2"><button class="btn btn-primary w-100">Filter</button></div>
         </form>
@@ -93,6 +102,7 @@ ob_start(); ?>
         <table class="table table-hover align-middle mb-0 data-table">
             <thead>
                 <tr>
+                    <th>Survey ID</th>
                     <th>Record</th>
                     <th>Form</th>
                     <th>Surveyor</th>
@@ -104,6 +114,7 @@ ob_start(); ?>
             <tbody>
             <?php foreach ($result['records'] as $r): ?>
                 <tr>
+                    <td><code class="small"><?= e((string) ($r['survey_code'] ?? '') ?: '—') ?></code></td>
                     <td><code class="small"><?= e(substr((string) $r['record_uuid'], 0, 8)) ?> #<?= (int) $r['id'] ?></code></td>
                     <td><?= e($r['form_title']) ?></td>
                     <td><?= e((string) ($r['submitted_by_name'] ?? '—')) ?></td>
@@ -161,7 +172,7 @@ ob_start(); ?>
                 <?php $totalPages = (int) ceil($result['total'] / $result['per_page']); ?>
                 <?php for ($i = 1; $i <= $totalPages; $i++): ?>
                 <li class="page-item <?= $i === $page ? 'active' : '' ?>">
-                    <a class="page-link" href="monitoring.php?form_id=<?= $formId ?>&status=<?= e($status) ?>&page=<?= $i ?>"><?= $i ?></a>
+                    <a class="page-link" href="monitoring.php?form_id=<?= $formId ?>&status=<?= e($status) ?>&q=<?= urlencode($search) ?>&page=<?= $i ?>"><?= $i ?></a>
                 </li>
                 <?php endfor; ?>
             </ul>

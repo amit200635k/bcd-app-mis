@@ -60,6 +60,7 @@ final class RecordController
                 self::service()->enqueueSync($user->id(), (string) ($data['device_id'] ?? ''), [
                     'record_uuid'     => (string) $result['record_uuid'],
                     'record_id'       => (int) $result['record_id'],
+                    'survey_code'     => (string) ($result['survey_code'] ?? ''),
                     'form_id'         => (int) $data['form_id'],
                     'form_version_id' => (int) $data['form_version_id'],
                     'status'          => (string) $result['status'],

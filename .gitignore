@@ -57,3 +57,10 @@ tmp/
 # Test runtime state (case file latest record pointer)
 tests/.case_form40.latest.json
 tests/.case_form40_cleanup.php
+
+# Binary / data / screenshot artifacts
+gis.zip
+mobile2/screen.png
+database/bcd_survey.sql
+tests/.case_iec.latest.json
+tests/.case_office.latest.json

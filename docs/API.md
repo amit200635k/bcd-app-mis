@@ -24,14 +24,14 @@ All authenticated endpoints require header: `Authorization: Bearer <access_token
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/v1/forms` | All published forms with full structure (sections/fields/options) |
-| GET | `/v1/forms/{code or id}` | Single published form definition |
+| GET | `/v1/forms` | All published forms with full structure (sections/fields/options). Forms whose status is `draft` (never published, or moved back to draft from the MIS Survey Builder) are excluded. |
+| GET | `/v1/forms/{code or id}` | Single published form definition. Returns an error (`403`) when the form is not in `published` status — e.g. after it was moved back to draft via the builder's "Move to Draft" action. |
 
 ## Survey Records (mobile sync)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/v1/records` | Upsert record. Body: `{record_uuid, form_id, form_version_id, status, device_id?, answers{field_key:value}, gps?}`. On success the change is also enqueued in the mobile sync queue (see `/v1/sync/status`). |
+| POST | `/v1/records` | Upsert record. Body: `{record_uuid, form_id, form_version_id, status, device_id?, answers{field_key:value}, gps?}`. The server assigns an additional unique Survey ID (`survey_code`, format `JH/{district_id}/{MM}/{YY}/{daywise_count}/{unix_last4}`, e.g. `JH/20/08/26/0003/4821`) to every record including drafts; re-syncs keep it and the response echoes it back. It also overwrites any `auto_number` field answer with this code. On success the change is also enqueued in the mobile sync queue (see `/v1/sync/status`). |
 | GET | `/v1/records` | List records. Query: `form_id`, `status`, `page`, `per_page` |
 | POST | `/v1/records/{id}/status` | Workflow transition. Body: `{status, remark?}` |
 | GET | `/v1/sync/status` | Pending mobile-sync queue status for the calling user's devices (`pending` count + `by_status` breakdown). The queue is populated by `POST /v1/records` when the user has an active device (optionally targeting the submitted `device_id`). |

@@ -68,7 +68,10 @@ ob_start(); ?>
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
         <h1 class="page-title mb-1"><i class="bi bi-file-earmark-text me-2"></i>Record Detail</h1>
-        <span class="text-muted small"><code><?= e($record['record_uuid']) ?></code> — #<?= (int) $record['id'] ?></span>
+        <div class="text-muted small">
+            <span class="badge bg-dark fs-6"><span class="text-white"><?= e((string) ($record['survey_code'] ?: '—')) ?></span></span>
+            <span class="ms-2">UUID <code><?= e($record['record_uuid']) ?></code> — #<?= (int) $record['id'] ?></span>
+        </div>
     </div>
     <a href="monitoring.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Monitoring</a>
 </div>
@@ -81,9 +84,10 @@ ob_start(); ?>
                 <?php if ($record['answers'] === []): ?>
                 <p class="text-muted text-center py-4 mb-0">No answers recorded for this record.</p>
                 <?php else: ?>
-                <table class="table table-sm align-middle mb-0 data-table">
+                <table class="table table-sm align-middle mb-0">
                     <tbody>
-                    <?php foreach ($record['answers'] as $a): ?>
+                    <?php //print_r($record['answers']); 
+                    foreach ($record['answers'] as $a): ?>
                         <tr>
                             <th class="text-muted fw-normal small" style="width:35%"><?= e((string) ($a['field_label'] ?: $a['field_key'])) ?>
                                 <div class="fw-light"><code><?= e($a['field_key']) ?></code></div>

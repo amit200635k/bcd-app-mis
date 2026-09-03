@@ -124,6 +124,22 @@ ob_start(); ?>
         originalRequired[w.dataset.fieldKey] = inp ? inp.hasAttribute('required') : false;
     });
 
+    /* Calculated fields — settings.calc = { watch: 'other_key', expr: 'current_year - {other_key}' }.
+       The watched field's value is substituted for {key} tokens and current_year for the
+       year; the sanitized arithmetic result is written into this field's input. */
+    const calcs = <?= json_encode(array_reduce($definition['sections'], function (array $carry, array $section): array {
+        foreach ($section['fields'] as $field) {
+            $calc = $field['settings']['calc'] ?? null;
+            if (is_array($calc) && !empty($calc['watch']) && !empty($calc['expr'])) {
+                $carry[$field['field_key']] = [
+                    'watch' => (string) $calc['watch'],
+                    'expr'  => (string) $calc['expr'],
+                ];
+            }
+        }
+        return $carry;
+    }, [])) ?>;
+
     function fieldValue(fieldKey) {
         const w = document.querySelector(`[data-field-key="${fieldKey}"]`);
         if (!w) return null;
@@ -183,9 +199,42 @@ ob_start(); ?>
         }
     }
 
-    document.querySelectorAll('input, select, textarea').forEach((el) => el.addEventListener('input', applyConditions));
-    document.querySelectorAll('select').forEach((el) => el.addEventListener('change', applyConditions));
-    applyConditions();
+    function applyCalcs() {
+        const year = new Date().getFullYear();
+        for (const [targetKey, c] of Object.entries(calcs)) {
+            const w = document.querySelector(`[data-field-key="${targetKey}"]`);
+            if (!w || w.classList.contains('d-none')) continue;
+            const inp = w.querySelector('input, select, textarea');
+            if (!inp) continue;
+
+            let out = '';
+            const raw = fieldValue(c.watch);
+            if (raw !== null && String(raw).trim() !== '') {
+                let expr = String(c.expr)
+                    .replace(/\{([a-zA-Z0-9_]+)\}/g, (m, k) => {
+                        const v = parseFloat(fieldValue(k));
+                        return Number.isFinite(v) ? String(v) : 'NaN';
+                    })
+                    .replace(/current_year/g, String(year));
+                if (/^[\d\s+\-*/().]+$/.test(expr) && !expr.includes('NaN')) {
+                    try {
+                        const v = Function('"use strict";return (' + expr + ')')();
+                        if (Number.isFinite(v)) out = String(Math.round(v * 100) / 100);
+                    } catch (e) { /* leave empty */ }
+                }
+            }
+            inp.value = out;
+        }
+    }
+
+    function applyAll() {
+        applyConditions();
+        applyCalcs();
+    }
+
+    document.querySelectorAll('input, select, textarea').forEach((el) => el.addEventListener('input', applyAll));
+    document.querySelectorAll('select').forEach((el) => el.addEventListener('change', applyAll));
+    applyAll();
 })();
 </script>
 <script>

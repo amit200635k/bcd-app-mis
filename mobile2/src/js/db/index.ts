@@ -67,6 +67,12 @@ async function migrate(db: SQLiteDBConnection): Promise<void> {
   for (const stmt of SCHEMA_STATEMENTS) {
     await db.execute(stmt);
   }
+  // v1 → v2: survey_code on existing installs (fresh installs get it from
+  // CREATE TABLE above; SQLite lacks ADD COLUMN IF NOT EXISTS, so guard).
+  const cols = await db.query('PRAGMA table_info(survey_header)');
+  if (!cols.values?.some((c: { name?: string }) => c.name === 'survey_code')) {
+    await db.execute('ALTER TABLE survey_header ADD COLUMN survey_code TEXT');
+  }
   await db.execute(`PRAGMA user_version = ${DB_VERSION}`);
 }
 

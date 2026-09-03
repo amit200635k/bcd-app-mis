@@ -386,6 +386,7 @@ CREATE TABLE `survey_conditions` (
 CREATE TABLE `survey_records` (
   `id`                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `record_uuid`       CHAR(36)        NOT NULL,
+  `survey_code`       VARCHAR(64)     NULL,
   `form_id`           INT UNSIGNED    NOT NULL,
   `form_version_id`   INT UNSIGNED    NOT NULL,
   `user_id`           INT UNSIGNED    NOT NULL,
@@ -400,6 +401,7 @@ CREATE TABLE `survey_records` (
   `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_survey_records_uuid` (`record_uuid`),
+  UNIQUE KEY `uq_survey_records_code` (`survey_code`),
   KEY `idx_survey_records_form` (`form_id`),
   KEY `idx_survey_records_user` (`user_id`),
   KEY `idx_survey_records_status` (`status`),
@@ -407,6 +409,14 @@ CREATE TABLE `survey_records` (
   CONSTRAINT `fk_record_form`    FOREIGN KEY (`form_id`)         REFERENCES `survey_forms` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_record_version` FOREIGN KEY (`form_version_id`) REFERENCES `survey_versions` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_record_user`    FOREIGN KEY (`user_id`)         REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+-- Global per-day sequence for survey_code generation (one row per day;
+-- the counter resets naturally each day).
+CREATE TABLE `survey_id_sequences` (
+  `counter_date` DATE            NOT NULL,
+  `last_value`   INT UNSIGNED    NOT NULL DEFAULT 0,
+  PRIMARY KEY (`counter_date`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `survey_answers` (

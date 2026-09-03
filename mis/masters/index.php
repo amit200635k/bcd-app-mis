@@ -40,6 +40,55 @@ if (($_POST['action'] ?? '') === 'import' && ($_FILES['csv']['error'] ?? 1) === 
     redirect('mis/masters/index.php');
 }
 
+// Location hierarchy CRUD.
+if (($_POST['action'] ?? '') === 'create_block') {
+    SessionAuth::requirePermission('masters.manage');
+    try {
+        $service->createBlock((int) $_POST['district_id'], (string) $_POST['name']);
+        AuditLog::record('location.block.create', 'masters', 'block', (string) $_POST['district_id'], [], ['name' => $_POST['name']], $user->id());
+        flash('success', 'Block created.');
+    } catch (Throwable $e) {
+        flash('error', exception_message($e));
+    }
+    redirect('mis/masters/index.php');
+}
+
+if (($_POST['action'] ?? '') === 'create_panchayat') {
+    SessionAuth::requirePermission('masters.manage');
+    try {
+        $service->createPanchayat((int) $_POST['block_id'], (string) $_POST['name']);
+        AuditLog::record('location.panchayat.create', 'masters', 'panchayat', (string) $_POST['block_id'], [], ['name' => $_POST['name']], $user->id());
+        flash('success', 'Panchayat created.');
+    } catch (Throwable $e) {
+        flash('error', exception_message($e));
+    }
+    redirect('mis/masters/index.php');
+}
+
+if (($_POST['action'] ?? '') === 'create_village') {
+    SessionAuth::requirePermission('masters.manage');
+    try {
+        $service->createVillage((int) $_POST['panchayat_id'], (string) $_POST['name']);
+        AuditLog::record('location.village.create', 'masters', 'village', (string) $_POST['panchayat_id'], [], ['name' => $_POST['name']], $user->id());
+        flash('success', 'Village created.');
+    } catch (Throwable $e) {
+        flash('error', exception_message($e));
+    }
+    redirect('mis/masters/index.php');
+}
+
+if (($_POST['action'] ?? '') === 'update_location') {
+    SessionAuth::requirePermission('masters.manage');
+    try {
+        $service->update((string) $_POST['type'], (int) $_POST['id'], (string) $_POST['name']);
+        AuditLog::record('location.' . $_POST['type'] . '.update', 'masters', $_POST['type'], (string) $_POST['id'], [], ['name' => $_POST['name']], $user->id());
+        flash('success', ucfirst($_POST['type']) . ' updated.');
+    } catch (Throwable $e) {
+        flash('error', exception_message($e));
+    }
+    redirect('mis/masters/index.php');
+}
+
 // Master group/item management (mirrors admin/masters.php).
 if (in_array($_POST['action'] ?? '', ['create_group', 'delete_group', 'add_item', 'delete_item'], true)) {
     SessionAuth::requirePermission('masters.manage');
@@ -224,36 +273,263 @@ ob_start(); ?>
 
     <div class="col-lg-6">
         <div class="card">
-            <div class="card-header">Location Hierarchy</div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0 data-table">
-                    <thead>
-                        <tr><th>District</th><th>Blocks</th><th>Panchayats</th><th>Villages</th><th class="text-end">Actions</th></tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($tree as $d): ?>
-                        <tr>
-                            <td class="fw-semibold"><?= e($d['name']) ?></td>
-                            <td><?= count($d['blocks']) ?></td>
-                            <td><?= array_sum(array_map(fn($b) => count($b['panchayats']), $d['blocks'])) ?></td>
-                            <td><?= array_sum(array_map(fn($b) => array_sum(array_map(fn($p) => count($p['villages']), $b['panchayats'])), $d['blocks'])) ?></td>
-                            <td class="text-end">
-                                <?php if ($canManage): ?>
-                                <button class="btn btn-sm btn-outline-danger" onclick="del('district', <?= (int) $d['id'] ?>)"><i class="bi bi-trash"></i></button>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Location Hierarchy</span>
+                <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>Import CSV</button>
             </div>
-        </div>
-        <div class="mt-2 text-muted small">
-            <i class="bi bi-info-circle me-1"></i>
-            Location levels are managed via CSV import; other master types are editable inline above.
+            <div class="card-body">
+                <?php if (empty($tree)): ?>
+                <div class="text-muted text-center py-3">No locations found. Import a CSV or add blocks manually.</div>
+                <?php else: ?>
+                <div class="accordion" id="locationTree">
+                <?php foreach ($tree as $dIdx => $d): ?>
+                    <?php
+                        $dAccId = 'dist_' . (int) $d['id'];
+                        $totalBlocks = count($d['blocks']);
+                        $totalPanch = array_sum(array_map(fn($b) => count($b['panchayats']), $d['blocks']));
+                        $totalVill = array_sum(array_map(fn($b) => array_sum(array_map(fn($p) => count($p['villages']), $b['panchayats'])), $d['blocks']));
+                    ?>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button <?= $dIdx > 0 ? 'collapsed' : '' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $dAccId ?>">
+                                <span class="fw-semibold"><?= e($d['name']) ?></span>
+                                <span class="badge bg-secondary ms-2"><?= $totalBlocks ?> blocks</span>
+                                <span class="badge bg-info ms-1"><?= $totalPanch ?> panchayats</span>
+                                <span class="badge bg-success ms-1"><?= $totalVill ?> villages</span>
+                            </button>
+                        </h2>
+                        <div id="<?= $dAccId ?>" class="accordion-collapse collapse <?= $dIdx === 0 ? 'show' : '' ?>" data-bs-parent="#locationTree">
+                            <div class="accordion-body p-0">
+                                <?php if (empty($d['blocks'])): ?>
+                                <div class="text-muted small py-2 px-3">No blocks yet.</div>
+                                <?php else: ?>
+                                <?php foreach ($d['blocks'] as $b): ?>
+                                <div class="border-bottom py-2 px-3">
+                                    <div class="d-flex align-items-center">
+                                        <button class="btn btn-sm btn-link text-decoration-none fw-semibold p-0 me-2" type="button" data-bs-toggle="collapse" data-bs-target="#blk_<?= (int) $b['id'] ?>">
+                                            <i class="bi bi-chevron-right small"></i> <?= e($b['name']) ?>
+                                        </button>
+                                        <span class="badge bg-secondary small"><?= count($b['panchayats']) ?> panchayats</span>
+                                        <?php if ($canManage): ?>
+                                        <div class="ms-auto">
+                                            <button class="btn btn-sm btn-outline-primary py-0 px-1" onclick="openEditModal('block', <?= (int) $b['id'] ?>, <?= e(json_encode((string) $b['name'])) ?>)" title="Edit"><i class="bi bi-pencil small"></i></button>
+                                            <form method="post" class="d-inline" onsubmit="return confirm('Delete this block? It must have no panchayats or villages.')">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="type" value="block">
+                                                <input type="hidden" name="id" value="<?= (int) $b['id'] ?>">
+                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete"><i class="bi bi-trash small"></i></button>
+                                            </form>
+                                        </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="collapse <?= count($d['blocks']) === 1 ? 'show' : '' ?>" id="blk_<?= (int) $b['id'] ?>">
+                                        <?php if (empty($b['panchayats'])): ?>
+                                        <div class="text-muted small py-1 ps-4">No panchayats yet.</div>
+                                        <?php else: ?>
+                                        <?php foreach ($b['panchayats'] as $p): ?>
+                                        <div class="ps-4 border-bottom py-1">
+                                            <div class="d-flex align-items-center">
+                                                <button class="btn btn-sm btn-link text-decoration-none py-0 px-1 small" type="button" data-bs-toggle="collapse" data-bs-target="#pan_<?= (int) $p['id'] ?>">
+                                                    <i class="bi bi-chevron-right small"></i> <?= e($p['name']) ?>
+                                                </button>
+                                                <span class="badge bg-secondary small"><?= count($p['villages']) ?> villages</span>
+                                                <?php if ($canManage): ?>
+                                                <div class="ms-auto">
+                                                    <button class="btn btn-sm btn-outline-primary py-0 px-1" onclick="openEditModal('panchayat', <?= (int) $p['id'] ?>, <?= e(json_encode((string) $p['name'])) ?>)" title="Edit"><i class="bi bi-pencil small"></i></button>
+                                                    <form method="post" class="d-inline" onsubmit="return confirm('Delete this panchayat? It must have no villages.')">
+                                                        <input type="hidden" name="action" value="delete">
+                                                        <input type="hidden" name="type" value="panchayat">
+                                                        <input type="hidden" name="id" value="<?= (int) $p['id'] ?>">
+                                                        <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete"><i class="bi bi-trash small"></i></button>
+                                                    </form>
+                                                </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="collapse ps-4" id="pan_<?= (int) $p['id'] ?>">
+                                                <?php if (empty($p['villages'])): ?>
+                                                <div class="text-muted small py-1">No villages yet.</div>
+                                                <?php else: ?>
+                                                <?php foreach ($p['villages'] as $v): ?>
+                                                <div class="d-flex align-items-center border-bottom py-1">
+                                                    <span class="small"><?= e($v['name']) ?></span>
+                                                    <?php if ($canManage): ?>
+                                                    <div class="ms-auto">
+                                                        <button class="btn btn-sm btn-outline-primary py-0 px-1" onclick="openEditModal('village', <?= (int) $v['id'] ?>, <?= e(json_encode((string) $v['name'])) ?>)" title="Edit"><i class="bi bi-pencil small"></i></button>
+                                                        <form method="post" class="d-inline" onsubmit="return confirm('Delete this village?')">
+                                                            <input type="hidden" name="action" value="delete">
+                                                            <input type="hidden" name="type" value="village">
+                                                            <input type="hidden" name="id" value="<?= (int) $v['id'] ?>">
+                                                            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete"><i class="bi bi-trash small"></i></button>
+                                                        </form>
+                                                    </div>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php endforeach; ?>
+                                                <?php if ($canManage): ?>
+                                                <div class="py-1">
+                                                    <button class="btn btn-sm btn-link text-decoration-none p-0 small" data-bs-toggle="modal" data-bs-target="#addVillageModal" onclick="setVillageParent(<?= (int) $p['id'] ?>, <?= e(json_encode((string) $p['name'])) ?>)"><i class="bi bi-plus-circle me-1"></i>Add Village</button>
+                                                </div>
+                                                <?php endif; ?>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <?php endforeach; ?>
+                                        <?php if ($canManage): ?>
+                                        <div class="ps-4 py-1">
+                                            <button class="btn btn-sm btn-link text-decoration-none p-0 small" data-bs-toggle="modal" data-bs-target="#addPanchayatModal" onclick="setPanchayatParent(<?= (int) $b['id'] ?>, <?= e(json_encode((string) $b['name'])) ?>)"><i class="bi bi-plus-circle me-1"></i>Add Panchayat</button>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                                <?php if ($canManage): ?>
+                                <div class="px-3 py-2">
+                                    <button class="btn btn-sm btn-link text-decoration-none p-0 small" data-bs-toggle="modal" data-bs-target="#addBlockModal" onclick="setBlockParent(<?= (int) $d['id'] ?>, <?= e(json_encode((string) $d['name'])) ?>)"><i class="bi bi-plus-circle me-1"></i>Add Block</button>
+                                </div>
+                                <?php endif; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Add Block Modal -->
+<div class="modal fade" id="addBlockModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            <input type="hidden" name="action" value="create_block">
+            <input type="hidden" name="district_id" id="blk_district_id">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Block</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">District</label>
+                    <input type="text" id="blk_district_name" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Block Name *</label>
+                    <input type="text" name="name" class="form-control" placeholder="e.g. Block Name" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Block</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Panchayat Modal -->
+<div class="modal fade" id="addPanchayatModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            <input type="hidden" name="action" value="create_panchayat">
+            <input type="hidden" name="block_id" id="pan_block_id">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Panchayat</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Block</label>
+                    <input type="text" id="pan_block_name" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Panchayat Name *</label>
+                    <input type="text" name="name" class="form-control" placeholder="e.g. Panchayat Name" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Panchayat</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Village Modal -->
+<div class="modal fade" id="addVillageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            <input type="hidden" name="action" value="create_village">
+            <input type="hidden" name="panchayat_id" id="vil_panchayat_id">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Village</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Panchayat</label>
+                    <input type="text" id="vil_panchayat_name" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Village Name *</label>
+                    <input type="text" name="name" class="form-control" placeholder="e.g. Village Name" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Village</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Location Modal -->
+<div class="modal fade" id="editLocationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            <input type="hidden" name="action" value="update_location">
+            <input type="hidden" name="type" id="edit_type">
+            <input type="hidden" name="id" id="edit_id">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editLocationTitle">Edit</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Name *</label>
+                    <input type="text" name="name" id="edit_name" class="form-control" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function setBlockParent(districtId, districtName) {
+    document.getElementById('blk_district_id').value = districtId;
+    document.getElementById('blk_district_name').value = districtName;
+}
+function setPanchayatParent(blockId, blockName) {
+    document.getElementById('pan_block_id').value = blockId;
+    document.getElementById('pan_block_name').value = blockName;
+}
+function setVillageParent(panchayatId, panchayatName) {
+    document.getElementById('vil_panchayat_id').value = panchayatId;
+    document.getElementById('vil_panchayat_name').value = panchayatName;
+}
+function openEditModal(type, id, name) {
+    document.getElementById('edit_type').value = type;
+    document.getElementById('edit_id').value = id;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('editLocationTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editLocationModal')).show();
+}
+</script>
 
 <!-- New Master Group Modal -->
 <div class="modal fade" id="newGroupModal" tabindex="-1">
@@ -294,6 +570,9 @@ ob_start(); ?>
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small">CSV columns: <code>district, block, panchayat, village</code>. Hierarchy is created automatically.</div>
+                <div class="mb-3">
+                    <a href="<?= url('database/sample_locations.csv') ?>" class="btn btn-outline-secondary btn-sm" download><i class="bi bi-download me-1"></i>Download Sample CSV</a>
+                </div>
                 <input type="file" name="csv" class="form-control" accept=".csv" required>
             </div>
             <div class="modal-footer">
@@ -303,22 +582,6 @@ ob_start(); ?>
         </form>
     </div>
 </div>
-
-<form id="deleteForm" method="post" class="d-none">
-    <input type="hidden" name="action" value="delete">
-    <input type="hidden" name="type" id="delType">
-    <input type="hidden" name="id" id="delId">
-</form>
-
-<script>
-function del(type, id) {
-    if (confirm('Delete this record and all children?')) {
-        document.getElementById('delType').value = type;
-        document.getElementById('delId').value = id;
-        document.getElementById('deleteForm').submit();
-    }
-}
-</script>
 <?php $content = ob_get_clean();
 
 echo view('layout', [

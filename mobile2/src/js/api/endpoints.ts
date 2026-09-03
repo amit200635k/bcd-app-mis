@@ -4,6 +4,7 @@ export const ENDPOINTS = {
     refresh: '/auth/refresh',
     logout: '/auth/logout',
     me: '/auth/me',
+    forgotPassword: '/auth/forgot-password',
   },
   forms: '/forms',
   form: (identifier: string | number): string => `/forms/${identifier}`,

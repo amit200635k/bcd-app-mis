@@ -339,6 +339,7 @@ export interface LocalRecordHeader {
   form_version_id: number;
   form_code?: string | null;
   form_title?: string | null;
+  survey_code?: string | null;
   status: string;
   device_id?: string | null;
   server_record_id?: number | null;
@@ -387,14 +388,15 @@ export async function saveRecord(
   try {
     await run(
       `INSERT OR REPLACE INTO survey_header
-         (record_uuid, form_id, form_version_id, form_code, form_title, status, device_id, server_record_id, gps_json, created_at, updated_at, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (record_uuid, form_id, form_version_id, form_code, form_title, survey_code, status, device_id, server_record_id, gps_json, created_at, updated_at, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         header.record_uuid,
         header.form_id,
         header.form_version_id,
         header.form_code ?? null,
         header.form_title ?? null,
+        header.survey_code ?? null,
         header.status,
         header.device_id ?? null,
         header.server_record_id ?? null,
@@ -431,7 +433,8 @@ export async function saveRecord(
     }
     await run('DELETE FROM attachments WHERE record_uuid = ?', [header.record_uuid]);
     for (const at of attachments) {
-      await addAttachment(at);
+      const id = await addAttachment(at);
+      at.id = id;
     }
     await endTransaction(true);
   } catch (e) {
@@ -440,8 +443,8 @@ export async function saveRecord(
   }
 }
 
-export async function addAttachment(at: LocalAttachment): Promise<void> {
-  await run(
+export async function addAttachment(at: LocalAttachment): Promise<number> {
+  const res = await run(
     `INSERT INTO attachments (record_uuid, field_key, category, local_uri, file_name, mime_type, size_bytes, upload_state, server_image_id, server_file_path)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -457,6 +460,7 @@ export async function addAttachment(at: LocalAttachment): Promise<void> {
       at.server_file_path ?? null,
     ],
   );
+  return res.lastId;
 }
 
 export async function getRecords(formId?: number | null): Promise<LocalRecordHeader[]> {
@@ -493,6 +497,11 @@ export async function updateRecordStatus(uuid: string, status: string, syncedAt?
     syncedAt ?? null,
     uuid,
   ]);
+}
+
+/** Persist the server-assigned Survey ID (JH/…) after a successful sync. */
+export async function updateSurveyCode(uuid: string, surveyCode: string): Promise<void> {
+  await run('UPDATE survey_header SET survey_code = ? WHERE record_uuid = ?', [surveyCode, uuid]);
 }
 
 export async function updateServerRecordId(uuid: string, serverRecordId: number): Promise<void> {

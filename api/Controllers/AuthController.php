@@ -36,6 +36,46 @@ final class AuthController
         Response::ok($tokens);
     }
 
+    public static function forgotPassword(): never
+    {
+        $data = Request::all();
+        $v = Validator::make($data, [
+            'username' => 'required|string',
+        ]);
+        if ($v->fails()) {
+            Response::validation($v->errors());
+        }
+
+        $username = (string) $data['username'];
+        $user = \App\Models\User::findByUsername($username);
+        $email = $user?->email();
+
+        // Security: always succeed whether or not the account/email exists, so
+        // the endpoint cannot be used to enumerate valid usernames.
+        if ($user !== null && $email !== null && $user->get('status') === 'active') {
+            $newPassword = \App\Security\Password::generate();
+            $pdo = \App\Database\Connection::instance();
+            $pdo->prepare('UPDATE users SET password_hash = :p, plain_password = :plain, must_change_password = 1 WHERE id = :id')
+                ->execute([
+                    'p' => \App\Security\Password::hash($newPassword),
+                    'plain' => config('app.env') !== 'production' ? $newPassword : null,
+                    'id' => $user->id(),
+                ]);
+
+            $appName = (string) config('app.name', 'BCD Survey Platform');
+            $body = "<p>Hello " . e($user->fullName() ?: $username) . ",</p>"
+                . "<p>Your password for <strong>" . e($appName) . "</strong> has been reset.</p>"
+                . "<p>Your new password is:</p>"
+                . "<p style=\"font-size:18px;font-weight:bold;\">" . e($newPassword) . "</p>"
+                . "<p>Please sign in with this password. The system may ask you to change it on your next sign-in.</p>"
+                . "<p>If you did not request this, please contact your administrator.</p>";
+
+            \App\Support\Mail::send($email, "Password reset – {$appName}", $body);
+        }
+
+        Response::ok(['message' => 'If an account with that username exists and has a valid e-mail address, a new password has been sent to it.']);
+    }
+
     public static function refresh(): never
     {
         $token = (string) Request::input('refresh_token', '');

@@ -46,7 +46,7 @@ $stmt->execute();
 $byStatus = $stmt->fetchAll();
 
 $stmt = $pdo->prepare(
-    'SELECT f.title, COUNT(r.id) AS total
+    'SELECT f.id,f.title, COUNT(r.id) AS total
      FROM survey_forms f
      LEFT JOIN survey_records r ON r.form_id = f.id
      WHERE f.status = "published"
@@ -123,7 +123,7 @@ ob_start(); ?>
                     <?php else: foreach ($byStatus as $row): ?>
                         <tr>
                             <td><span class="badge bg-secondary"><?= e($row['status']) ?></span></td>
-                            <td class="text-end"><?= number_format((int) $row['c']) ?></td>
+                            <td class="text-end"><a  class="link-underline-light" href="monitoring.php?status=<?= $row['status'] ?>" target="_blank"><?= number_format((int) $row['c']) ?></a></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
@@ -141,9 +141,10 @@ ob_start(); ?>
                     <?php if ($topForms === []): ?>
                         <tr><td colspan="2" class="text-muted text-center">No forms yet.</td></tr>
                     <?php else: foreach ($topForms as $row): ?>
+                        <?php //print_r($row); ?>
                         <tr>
                             <td><?= e($row['title']) ?></td>
-                            <td class="text-end"><?= number_format((int) $row['total']) ?></td>
+                            <td class="text-end"><a class="link-underline-light"  href="monitoring.php?form_id=<?= $row['id'] ?>" target="_blank"><?= number_format((int) $row['total']) ?></a></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>

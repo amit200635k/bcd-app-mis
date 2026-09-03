@@ -21,7 +21,14 @@ final class RecordService
 
     /**
      * Upsert a survey record with its answers.
+     *
+     * Every record also receives an additional unique Survey ID (`survey_code`)
+     * shaped like JH/{district_id}/{MM}/{YY}/{daywise_count}/{unix_last4},
+     * e.g. JH/20/08/26/0003/4821 — generated server-side (drafts included)
+     * and preserved unchanged across re-syncs.
+     *
      * @param array{record_uuid:string, form_id:int, form_version_id:int, answers:array, gps?:array, images?:array} $payload
+     * @return array{record_uuid:string, record_id:int, status:string, survey_code:string}
      */
     public function upsert(int $userId, array $payload): array
     {
@@ -32,55 +39,255 @@ final class RecordService
             $requestedStatus = $payload['status'] ?? 'submitted';
             $status = in_array($requestedStatus, self::STATUSES, true) ? $requestedStatus : 'submitted';
 
+            // The form version definition is needed twice: conditional
+            // evaluation of answers and stamping auto_number fields.
+            $definition = (new SurveyService())->formDefinition(
+                (int) $payload['form_id'],
+                (int) $payload['form_version_id']
+            );
+            $rawAnswers = $payload['answers'] ?? [];
+
             // Existing record?
-            $stmt = $pdo->prepare('SELECT * FROM survey_records WHERE record_uuid = :u LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id, survey_code FROM survey_records WHERE record_uuid = :u LIMIT 1');
             $stmt->execute(['u' => $uuid]);
             $existing = $stmt->fetch();
 
             if ($existing === false) {
+                $surveyCode = $this->nextSurveyCode($userId, $rawAnswers);
                 $stmt = $pdo->prepare(
                     'INSERT INTO survey_records
-                        (record_uuid, form_id, form_version_id, user_id, submitted_by, status, current_stage, synced_at)
-                     VALUES (:u, :f, :v, :uid, :sid, :s, NULL, NOW())'
+                        (record_uuid, survey_code, form_id, form_version_id, user_id, submitted_by, status, current_stage, synced_at)
+                     VALUES (:u, :code, :f, :v, :uid, :sid, :s, NULL, NOW())'
                 );
                 $stmt->execute([
-                    'u'   => $uuid,
-                    'f'   => $payload['form_id'],
-                    'v'   => $payload['form_version_id'],
-                    'uid' => $userId,
-                    'sid' => $userId,
-                    's'   => $status,
+                    'u'    => $uuid,
+                    'code' => $surveyCode,
+                    'f'    => $payload['form_id'],
+                    'v'    => $payload['form_version_id'],
+                    'uid'  => $userId,
+                    'sid'  => $userId,
+                    's'    => $status,
                 ]);
                 $recordId = (int) $pdo->lastInsertId();
             } else {
                 $recordId = (int) $existing['id'];
+                $surveyCode = (string) ($existing['survey_code'] ?? '');
+                if ($surveyCode === '') {
+                    // Legacy row (pre-survey_code) being re-synced: backfill once.
+                    $surveyCode = $this->nextSurveyCode($userId, $rawAnswers);
+                }
                 $stmt = $pdo->prepare(
-                    'UPDATE survey_records SET status = :s, submitted_by = COALESCE(submitted_by, :sid), synced_at = NOW() WHERE id = :id'
+                    'UPDATE survey_records
+                     SET status = :s, submitted_by = COALESCE(submitted_by, :sid), survey_code = :code, synced_at = NOW()
+                     WHERE id = :id'
                 );
-                $stmt->execute(['s' => $status, 'sid' => $userId, 'id' => $recordId]);
+                $stmt->execute(['s' => $status, 'sid' => $userId, 'code' => $surveyCode, 'id' => $recordId]);
                 // Replace prior answers.
                 $pdo->prepare('DELETE FROM survey_answers WHERE record_id = :id')->execute(['id' => $recordId]);
             }
 
             // Persist condition-evaluated answers for this form version.
-            $answers = $this->applyConditions(
-                (int) $payload['form_id'],
-                (int) $payload['form_version_id'],
-                $payload['answers'] ?? [],
-                $status
-            );
+            $evaluated = $this->applyConditions($definition, $rawAnswers, $status);
 
-            $this->saveAnswers($recordId, $answers);
+            $this->saveAnswers($recordId, $evaluated['answers']);
+            $this->stampAutoNumbers($recordId, $definition, $evaluated['visible'], $surveyCode);
+            $this->applyCalculatedFields($recordId, $definition, $evaluated['visible'], $evaluated['answers']);
             if (isset($payload['gps']) && is_array($payload['gps'])) {
                 $this->saveGps($recordId, $userId, $payload['gps']);
             }
 
             $pdo->commit();
-            return ['record_uuid' => $uuid, 'record_id' => $recordId, 'status' => $status];
+            return ['record_uuid' => $uuid, 'record_id' => $recordId, 'status' => $status, 'survey_code' => $surveyCode];
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Build the next unique Survey ID: JH/{district}/{MM}/{YY}/{seq}/{unix4}.
+     *
+     * The daywise segment comes from the atomic `survey_id_sequences` counter
+     * (one row per calendar day — the reset is implicit). District resolution:
+     * the submitted location_cascade answer's district first, then the
+     * submitting user's assigned district, else 00.
+     */
+    private function nextSurveyCode(int $userId, array $answers): string
+    {
+        $pdo = Connection::instance();
+        $now = time();
+
+        $districtId = 0;
+        foreach ($answers as $value) {
+            if (is_array($value)) {
+                $candidate = (int) ($value['district_id'] ?? 0);
+                if ($candidate > 0) {
+                    $districtId = $candidate;
+                    break;
+                }
+            }
+        }
+        if ($districtId === 0) {
+            $stmt = $pdo->prepare('SELECT district_id FROM users WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $userId]);
+            $districtId = (int) ($stmt->fetchColumn() ?: 0);
+        }
+
+        $today = date('Y-m-d', $now);
+
+$pdo->prepare('INSERT INTO survey_id_sequences (counter_date, `last_value`) VALUES (:d, 1) ON DUPLICATE KEY UPDATE `last_value` = `last_value` + 1' )->execute(['d' => $today]);
+
+$stmt = $pdo->prepare(    'SELECT `last_value`     FROM survey_id_sequences     WHERE counter_date = :d     LIMIT 1');
+
+$stmt->execute(['d' => $today]);
+
+$seq = max(1, (int) $stmt->fetchColumn());
+
+
+        // $pdo->prepare(
+        //     'INSERT INTO survey_id_sequences (counter_date, last_value) VALUES (:d, 1)
+        //      ON DUPLICATE KEY UPDATE last_value = last_value + 1'
+        // )->execute(['d' => $today]);
+        // $stmt = $pdo->prepare('SELECT last_value FROM survey_id_sequences WHERE counter_date = :d LIMIT 1');
+        // $stmt->execute(['d' => $today]);
+        // $seq = max(1, (int) $stmt->fetchColumn());
+
+        return sprintf(
+            'JH/%02s/%02s/%02s/%04d/%04d',
+            (string) $districtId,
+            date('m', $now),
+            date('y', $now),
+            $seq,
+            $now % 10000
+        );
+    }
+
+    /**
+     * Mirror the authoritative survey_code onto every visible `auto_number`
+     * field of the form version, overwriting any client-generated placeholder.
+     */
+    private function stampAutoNumbers(int $recordId, ?array $definition, array $visible, string $surveyCode): void
+    {
+        if ($surveyCode === '' || $definition === null) {
+            return;
+        }
+        $pdo = Connection::instance();
+
+        foreach (($definition['sections'] ?? []) as $section) {
+            foreach (($section['fields'] ?? []) as $field) {
+                if (($field['type'] ?? '') !== 'auto_number') {
+                    continue;
+                }
+                $key = (string) $field['field_key'];
+                if (isset($visible[$key]) && !$visible[$key]) {
+                    continue; // hidden by conditions — never persisted
+                }
+
+                $update = $pdo->prepare(
+                    'UPDATE survey_answers SET value_text = :c WHERE record_id = :rid AND field_key = :k'
+                );
+                $update->execute(['c' => $surveyCode, 'rid' => $recordId, 'k' => $key]);
+
+                if ($update->rowCount() === 0) {
+                    // Client did not submit an answer for this field at all.
+                    $insert = $pdo->prepare(
+                        'INSERT INTO survey_answers (record_id, field_id, field_key, value_text)
+                         VALUES (:rid, :fid, :k, :c)'
+                    );
+                    $insert->execute([
+                        'rid' => $recordId,
+                        'fid' => (int) $field['id'],
+                        'k'   => $key,
+                        'c'   => $surveyCode,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Enforce calculated fields server-side (declarative `settings.calc` on
+     * the TARGET field: {watch: 'other_key', expr: 'current_year - {other_key}'}).
+     *
+     * The expression is evaluated with the watched answers substituted for
+     * `{key}` tokens and `current_year` for the current year; the sanitized
+     * arithmetic result overwrites whatever the client submitted. When the
+     * result cannot be computed (watched field empty/non-numeric), any stored
+     * answer for the target is removed so stale values never persist.
+     */
+    private function applyCalculatedFields(int $recordId, ?array $definition, array $visible, array $answers): void
+    {
+        if ($definition === null) {
+            return;
+        }
+        $pdo = Connection::instance();
+
+        foreach (($definition['sections'] ?? []) as $section) {
+            foreach (($section['fields'] ?? []) as $field) {
+                $calc = $field['settings']['calc'] ?? null;
+                if (!is_array($calc) || empty($calc['watch']) || empty($calc['expr'])) {
+                    continue;
+                }
+                $key = (string) $field['field_key'];
+                if (isset($visible[$key]) && !$visible[$key]) {
+                    continue; // hidden by conditions — never persisted
+                }
+
+                $computed = $this->evaluateCalc((string) $calc['expr'], (string) $calc['watch'], $answers);
+
+                if ($computed === null) {
+                    $pdo->prepare('DELETE FROM survey_answers WHERE record_id = :rid AND field_key = :k')
+                        ->execute(['rid' => $recordId, 'k' => $key]);
+                    continue;
+                }
+
+                $update = $pdo->prepare(
+                    'UPDATE survey_answers SET value_text = :v WHERE record_id = :rid AND field_key = :k'
+                );
+                $update->execute(['v' => $computed, 'rid' => $recordId, 'k' => $key]);
+
+                if ($update->rowCount() === 0) {
+                    $insert = $pdo->prepare(
+                        'INSERT INTO survey_answers (record_id, field_id, field_key, value_text)
+                         VALUES (:rid, :fid, :k, :v)'
+                    );
+                    $insert->execute([
+                        'rid' => $recordId,
+                        'fid' => (int) $field['id'],
+                        'k'   => $key,
+                        'v'   => $computed,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /** Evaluate a calc expression; null when it cannot be computed safely. */
+    private function evaluateCalc(string $expr, string $watchKey, array $answers): ?string
+    {
+        $map = ['current_year' => (string) (int) date('Y')];
+        foreach ($answers as $k => $v) {
+            $numeric = (!is_array($v) && is_numeric($v)) ? (string) (0 + $v) : 'NaN';
+            $map['{' . $k . '}'] = $numeric;
+        }
+        // The watched value gates the whole calculation.
+        if (($map['{' . $watchKey . '}'] ?? 'NaN') === 'NaN' || !array_key_exists('{' . $watchKey . '}', $map)) {
+            return null;
+        }
+        $out = strtr($expr, $map);
+        if (str_contains($out, 'NaN') || !preg_match('/^[\d\s+\-*\/().]+$/', $out)) {
+            return null;
+        }
+        try {
+            $val = eval("return {$out};");
+        } catch (\Throwable) {
+            return null;
+        }
+        if (!is_numeric($val)) {
+            return null;
+        }
+        $val = round((float) $val, 2);
+        return ($val == (int) $val) ? (string) (int) $val : (string) $val;
     }
 
     /**
@@ -94,7 +301,7 @@ final class RecordService
      * Re-storing the same record (a re-sync) replaces any prior pending or
      * in-flight item for that record instead of stacking duplicates.
      *
-     * @param array{record_uuid:string, record_id:int, form_id:int, form_version_id:int, status:string} $change
+     * @param array{record_uuid:string, record_id:int, form_id:int, form_version_id:int, status:string, survey_code?:string} $change
      */
     public function enqueueSync(int $userId, ?string $clientDeviceId, array $change): void
     {
@@ -125,6 +332,7 @@ final class RecordService
             'action'          => 'upsert',
             'record_uuid'     => $recordUuid,
             'record_id'       => $change['record_id'] ?? null,
+            'survey_code'     => $change['survey_code'] ?? null,
             'form_id'         => $change['form_id'] ?? null,
             'form_version_id' => $change['form_version_id'] ?? null,
             'status'          => $change['status'] ?? 'submitted',
@@ -161,17 +369,16 @@ final class RecordService
      * value.
      *
      * @param array<string, mixed> $answers
-     * @return array<string, mixed>
+     * @return array{answers: array<string, mixed>, visible: array<string, bool>}
      */
-    private function applyConditions(int $formId, int $formVersionId, array $answers, string $status): array
+    private function applyConditions(?array $definition, array $answers, string $status): array
     {
-        $definition = (new SurveyService())->formDefinition($formId, $formVersionId);
         if ($definition === null) {
-            return $answers;
+            return ['answers' => $answers, 'visible' => []];
         }
         $sections = $definition['sections'] ?? [];
         if ($sections === []) {
-            return $answers;
+            return ['answers' => $answers, 'visible' => []];
         }
 
         $evaluated = ConditionEvaluator::evaluate($sections, $answers);
@@ -191,7 +398,7 @@ final class RecordService
             }
         }
 
-        return $answers;
+        return ['answers' => $answers, 'visible' => $evaluated['visible']];
     }
 
     private function saveAnswers(int $recordId, array $answers): void
@@ -450,7 +657,7 @@ final class RecordService
         return in_array((int) ($record['user_id'] ?? 0), self::scopeUserIds($viewer), true);
     }
 
-    public function listRecords(?int $formId = null, string $status = '', int $page = 1, int $perPage = 50, ?User $viewer = null): array
+    public function listRecords(?int $formId = null, string $status = '', int $page = 1, int $perPage = 50, ?User $viewer = null, string $search = ''): array
     {
         $pdo = Connection::instance();
         $where = '1=1';
@@ -470,9 +677,20 @@ final class RecordService
             }
             $where .= ' AND r.user_id IN (' . implode(',', array_map('intval', $ids)) . ')';
         }
+        if ($search !== '') {
+            $where .= ' AND (r.survey_code LIKE :q_code OR r.record_uuid LIKE :q_uuid OR u.full_name LIKE :q_name)';
+            $like = '%' . $search . '%';
+            $params['q_code'] = $like;
+            $params['q_uuid'] = $like;
+            $params['q_name'] = $like;
+        }
         $offset = max(0, ($page - 1) * $perPage);
 
-        $totalStmt = $pdo->prepare("SELECT COUNT(*) FROM survey_records r WHERE {$where}");
+        $totalStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM survey_records r
+             LEFT JOIN users u ON u.id = r.submitted_by
+             WHERE {$where}"
+        );
         $totalStmt->execute($params);
         $total = (int) $totalStmt->fetchColumn();
 

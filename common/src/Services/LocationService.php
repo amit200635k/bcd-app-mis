@@ -186,14 +186,108 @@ final class LocationService
         return (int) $pdo->lastInsertId();
     }
 
-    public function destroy(string $type, int $id): void
+    public function createBlock(int $districtId, string $name): int
     {
-        $tables = ['district' => 'districts', 'block' => 'blocks', 'panchayat' => 'panchayats', 'village' => 'villages'];
+        $name = trim($name);
+        if ($name === '') {
+            throw new RuntimeException('Block name is required.');
+        }
+        $pdo = Connection::instance();
+        $stmt = $pdo->prepare('SELECT id FROM blocks WHERE district_id = :d AND name = :n LIMIT 1');
+        $stmt->execute(['d' => $districtId, 'n' => $name]);
+        if ($stmt->fetchColumn()) {
+            throw new RuntimeException('A block with this name already exists in the selected district.');
+        }
+        $code = 'B' . time() . random_int(10, 99);
+        $pdo->prepare('INSERT INTO blocks (district_id, code, name) VALUES (:d, :c, :n)')
+            ->execute(['d' => $districtId, 'c' => $code, 'n' => $name]);
+        return (int) $pdo->lastInsertId();
+    }
+
+    public function createPanchayat(int $blockId, string $name): int
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new RuntimeException('Panchayat name is required.');
+        }
+        $pdo = Connection::instance();
+        $stmt = $pdo->prepare('SELECT id FROM panchayats WHERE block_id = :b AND name = :n LIMIT 1');
+        $stmt->execute(['b' => $blockId, 'n' => $name]);
+        if ($stmt->fetchColumn()) {
+            throw new RuntimeException('A panchayat with this name already exists in the selected block.');
+        }
+        $code = 'P' . time() . random_int(10, 99);
+        $pdo->prepare('INSERT INTO panchayats (block_id, code, name) VALUES (:b, :c, :n)')
+            ->execute(['b' => $blockId, 'c' => $code, 'n' => $name]);
+        return (int) $pdo->lastInsertId();
+    }
+
+    public function createVillage(int $panchayatId, string $name): int
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new RuntimeException('Village name is required.');
+        }
+        $pdo = Connection::instance();
+        $stmt = $pdo->prepare('SELECT id FROM villages WHERE panchayat_id = :p AND name = :n LIMIT 1');
+        $stmt->execute(['p' => $panchayatId, 'n' => $name]);
+        if ($stmt->fetchColumn()) {
+            throw new RuntimeException('A village with this name already exists in the selected panchayat.');
+        }
+        $code = 'V' . time() . random_int(10, 99);
+        $pdo->prepare('INSERT INTO villages (panchayat_id, code, name) VALUES (:p, :c, :n)')
+            ->execute(['p' => $panchayatId, 'c' => $code, 'n' => $name]);
+        return (int) $pdo->lastInsertId();
+    }
+
+    public function update(string $type, int $id, string $name): void
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new RuntimeException('Name is required.');
+        }
+        $tables = ['block' => 'blocks', 'panchayat' => 'panchayats', 'village' => 'villages'];
         $table = $tables[$type] ?? null;
         if ($table === null) {
             throw new RuntimeException('Invalid entity type.');
         }
-        $stmt = Connection::instance()->prepare("DELETE FROM {$table} WHERE id = :id");
-        $stmt->execute(['id' => $id]);
+        $pdo = Connection::instance();
+        $stmt = $pdo->prepare("SELECT id FROM {$table} WHERE name = :n AND id != :id LIMIT 1");
+        $stmt->execute(['n' => $name, 'id' => $id]);
+        if ($stmt->fetchColumn()) {
+            throw new RuntimeException('A record with this name already exists.');
+        }
+        $pdo->prepare("UPDATE {$table} SET name = :n WHERE id = :id")
+            ->execute(['n' => $name, 'id' => $id]);
+    }
+
+    public function destroy(string $type, int $id): void
+    {
+        $tables = ['district' => 'districts', 'block' => 'blocks', 'panchayat' => 'panchayats', 'village' => 'villages'];
+        $children = [
+            'district'  => 'blocks',
+            'block'     => 'panchayats',
+            'panchayat' => 'villages',
+        ];
+        $table = $tables[$type] ?? null;
+        if ($table === null) {
+            throw new RuntimeException('Invalid entity type.');
+        }
+        $pdo = Connection::instance();
+        $fkColumns = [
+            'district'  => 'district_id',
+            'block'     => 'block_id',
+            'panchayat' => 'panchayat_id',
+        ];
+        if (isset($children[$type])) {
+            $childTable = $children[$type];
+            $fk = $fkColumns[$type];
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM {$childTable} WHERE {$fk} = :id");
+            $stmt->execute(['id' => $id]);
+            if ((int) $stmt->fetchColumn() > 0) {
+                throw new RuntimeException('Cannot delete: this record still has child entries. Remove them first.');
+            }
+        }
+        $pdo->prepare("DELETE FROM {$table} WHERE id = :id")->execute(['id' => $id]);
     }
 }

@@ -108,4 +108,5 @@ export interface RecordCreated {
   record_uuid: string;
   record_id: number;
   status: string;
+  survey_code?: string | null;
 }

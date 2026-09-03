@@ -522,6 +522,9 @@ $tripKeys = array_column($tripStmt->fetchAll(), 'field_key');
 check('Round-tripped conditions still drop hidden answers', !in_array('hidden_mand', $tripKeys, true) && in_array('condreq', $tripKeys, true), implode(',', $tripKeys));
 
 // 18. Mobile sync queue populated on record store (Phase 4).
+// Purge devices left behind by previously interrupted runs so the per-device
+// row counts below stay deterministic.
+$pdo->exec("DELETE FROM devices WHERE device_id LIKE 'TEST-DEV-SMOKE-%'");
 $syncDevice = 'TEST-DEV-SMOKE-' . time();
 $pdo->prepare('INSERT INTO devices (user_id, device_id, device_name, platform, is_active) VALUES (:u, :d, :n, :p, 1)')
     ->execute(['u' => 3, 'd' => $syncDevice, 'n' => 'Smoke Phone', 'p' => 'android']);
@@ -537,6 +540,7 @@ $syncRec = $recordSvc->upsert(3, [
 $recordSvc->enqueueSync(3, $syncDevice, [
     'record_uuid' => $syncRec['record_uuid'],
     'record_id'   => (int) $syncRec['record_id'],
+    'survey_code' => (string) $syncRec['survey_code'],
     'form_id'     => $formId,
     'form_version_id' => $versionId,
     'status'      => $syncRec['status'],
@@ -549,6 +553,7 @@ $q = $queueRows[0] ?? null;
 $queuePayload = $q !== null ? json_decode((string) $q['payload_json'], true) : null;
 check('Record store enqueues pending sync item', $q !== null && (int) $q['device_id'] === $syncDeviceId && $q['action'] === 'upsert' && $q['status'] === 'pending', json_encode($q));
 check('Sync payload carries record metadata', ($queuePayload['record_uuid'] ?? '') === $syncRec['record_uuid'] && (int) ($queuePayload['record_id'] ?? 0) === (int) $syncRec['record_id'] && ($queuePayload['form_id'] ?? 0) == $formId, json_encode($queuePayload));
+check('Sync payload carries survey_code', ($queuePayload['survey_code'] ?? '') === (string) $syncRec['survey_code'], (string) ($queuePayload['survey_code'] ?? ''));
 
 // Re-enqueueing the same record (re-sync) must not stack duplicates.
 $recordSvc->enqueueSync(3, $syncDevice, [
@@ -566,7 +571,9 @@ check('Re-sync replaces the pending item (no duplicates)', count($afterResync) =
 $pending = (int) $pdo->query('SELECT COUNT(*) FROM sync_queue WHERE user_id = 3 AND status = "pending"')->fetchColumn();
 check('sync/status pending reflects queued record', $pending >= 1, "pending={$pending}");
 
-// Unknown device id falls back to the user's active devices (still enqueues).
+// Unknown device id falls back to the user's active devices (still enqueued,
+// once per active device — the count is data-dependent, not hardcoded).
+$activeDevices = (int) $pdo->query('SELECT COUNT(*) FROM devices WHERE user_id = 3 AND is_active = 1')->fetchColumn();
 $recordSvc->enqueueSync(3, 'NO-SUCH-DEVICE', [
     'record_uuid' => $syncRec['record_uuid'],
     'record_id'   => (int) $syncRec['record_id'],
@@ -576,11 +583,163 @@ $recordSvc->enqueueSync(3, 'NO-SUCH-DEVICE', [
 ]);
 $queueStmt->execute(['u' => $syncRec['record_uuid']]);
 $afterFallback = $queueStmt->fetchAll();
-check('Unknown device falls back to active devices (still 1 pending)', count($afterFallback) === 1, 'rows=' . count($afterFallback));
+check('Unknown device falls back to active devices (one row each)', count($afterFallback) === $activeDevices, "rows=" . count($afterFallback) . " devices={$activeDevices}");
 
-// Cleanup: remove the smoke device (cascades its sync_queue rows).
+// Cleanup: remove the smoke device (cascades its sync_queue rows). The other
+// rows belong to the user's remaining active devices.
 $pdo->prepare('DELETE FROM devices WHERE id = :id')->execute(['id' => $syncDeviceId]);
 $queueStmt->execute(['u' => $syncRec['record_uuid']]);
-check('Deleting the device removes its queued items (cascade)', $queueStmt->fetchAll() === []);
+$afterCascade = $queueStmt->fetchAll();
+check('Deleting the device removes its queued items (cascade)', count($afterCascade) === max(0, $activeDevices - 1), 'rows=' . count($afterCascade));
+
+// 19. Survey Unique ID (survey_code): JH/{district}/{MM}/{YY}/{daywise}/{unix4}.
+$codeFormId = $svc->createForm(1, ['code' => 'SMOKE_CODE_' . time(), 'title' => 'Smoke Code Form']);
+$codeVersionId = $svc->createVersion($codeFormId, 1, 'draft');
+$svc->saveStructure($codeFormId, $codeVersionId, [
+    ['title' => 'A', 'fields' => [
+        ['field_key' => 'survey_id', 'label' => 'Survey ID', 'type' => 'auto_number'],
+        ['field_key' => 'name', 'label' => 'Name', 'type' => 'textbox'],
+        ['field_key' => 'loc', 'label' => 'Location', 'type' => 'location_cascade',
+         'settings' => ['levels' => ['district', 'block', 'panchayat', 'village']]],
+    ]],
+]);
+$svc->publish($codeFormId, 1, 'publish');
+
+// District 21 user (created in sec. 12) → code carries their district; drafts included.
+$draftRec = $recordSvc->upsert($fkId, [
+    'record_uuid' => 'smoke-code-draft-' . time(),
+    'form_id' => $codeFormId,
+    'form_version_id' => $codeVersionId,
+    'status' => 'draft',
+    'answers' => [],
+]);
+$codePattern = '/^JH\/21\/\d{2}\/\d{2}\/\d{4,}\/\d{4}$/';
+check('survey_code format with user district (draft included)', (bool) preg_match($codePattern, (string) $draftRec['survey_code']), (string) $draftRec['survey_code']);
+
+// Re-sync preserves the assigned code.
+$redraft = $recordSvc->upsert($fkId, [
+    'record_uuid' => $draftRec['record_uuid'],
+    'form_id' => $codeFormId,
+    'form_version_id' => $codeVersionId,
+    'status' => 'submitted',
+    'answers' => ['loc' => ['district_id' => 5]],
+]);
+check('Re-sync keeps the original survey_code', $redraft['survey_code'] === $draftRec['survey_code'], json_encode($redraft));
+
+// Location-cascade district in the answers wins over the user's district.
+$locRec = $recordSvc->upsert($fkId, [
+    'record_uuid' => 'smoke-code-loc-' . time(),
+    'form_id' => $codeFormId,
+    'form_version_id' => $codeVersionId,
+    'answers' => ['loc' => ['district_id' => 5]],
+]);
+check('survey_code district prefers submitted location cascade', str_starts_with((string) $locRec['survey_code'], 'JH/05/'), (string) $locRec['survey_code']);
+
+// Daywise counter increments across records.
+$seg1 = explode('/', (string) $draftRec['survey_code']);
+$seg2 = explode('/', (string) $locRec['survey_code']);
+$d1 = (int) ($seg1[4] ?? 0);
+$d2 = (int) ($seg2[4] ?? 0);
+check('Daywise count increments per record', $d2 === $d1 + 1, "{$d1} -> {$d2}");
+
+// The authoritative code overwrites/stamps every visible auto_number field.
+$ansStmt = $pdo->prepare("SELECT value_text FROM survey_answers WHERE record_id = :rid AND field_key = 'survey_id'");
+$ansStmt->execute(['rid' => $locRec['record_id']]);
+check('auto_number answer carries the server survey_code', (string) $ansStmt->fetchColumn() === (string) $locRec['survey_code']);
+
+// Codes are unique across the table.
+$dupe = (int) $pdo->query(
+    "SELECT COUNT(*) - COUNT(DISTINCT survey_code) FROM survey_records WHERE survey_code IS NOT NULL"
+)->fetchColumn();
+check('survey_code unique across all records', $dupe === 0, "dupes={$dupe}");
+
+// 20. Unpublish: move a published form back to draft; hidden from surveyors.
+$unpCode = 'SMOKE_UNPUB_' . time();
+$unpFormId = $svc->createForm(1, ['code' => $unpCode, 'title' => 'Smoke Unpublish Form']);
+$unpVersionId = $svc->createVersion($unpFormId, 1, 'draft');
+$svc->saveStructure($unpFormId, $unpVersionId, [
+    ['title' => 'A', 'fields' => [
+        ['field_key' => 'name', 'label' => 'Name', 'type' => 'textbox'],
+    ]],
+]);
+$svc->publish($unpFormId, 1, 'publish');
+$inList = static function () use ($svc, $unpFormId): bool {
+    foreach ($svc->publishedForms() as $f) {
+        if ((int) $f['id'] === $unpFormId) {
+            return true;
+        }
+    }
+    return false;
+};
+check('Published form listed for surveyors before unpublish', $inList());
+
+$svc->unpublish($unpFormId, 1);
+$formRow = $svc->findForm($unpFormId);
+check('unpublish flips form status to draft', $formRow !== null && $formRow['status'] === 'draft', (string) ($formRow['status'] ?? ''));
+check('Unpublished form NOT listed for surveyors', !$inList());
+$pubStmt = $pdo->prepare("SELECT COUNT(*) FROM survey_versions WHERE form_id = :f AND status = 'published'");
+$pubStmt->execute(['f' => $unpFormId]);
+$pubRows = (int) $pubStmt->fetchColumn();
+check('No published version rows remain after unpublish', $pubRows === 0, "published_rows={$pubRows}");
+$unpDef = $svc->formDefinition($unpFormId);
+$unpFieldKeys = [];
+foreach (($unpDef['sections'] ?? []) as $s) {
+    foreach (($s['fields'] ?? []) as $f) {
+        $unpFieldKeys[] = $f['field_key'];
+    }
+}
+check('Structure survives unpublish (definition falls back to draft version)', in_array('name', $unpFieldKeys, true), json_encode($unpFieldKeys));
+
+try {
+    $svc->unpublish($unpFormId, 1);
+    check('unpublish on a draft form is rejected', false);
+} catch (RuntimeException $e) {
+    check('unpublish on a draft form is rejected', str_contains($e->getMessage(), 'Only published forms'), $e->getMessage());
+}
+
+// Re-publishing after unpublish reuses the same (draft-downgraded) version and
+// restores surveyor visibility — never a blank structure.
+$republishedVersionId = $svc->publish($unpFormId, 1, 're-publish');
+check('Re-publish reuses the unpublished version id', $republishedVersionId === $unpVersionId, "{$republishedVersionId} vs {$unpVersionId}");
+check('Re-published form is listed for surveyors again', $inList());
+$reDef = $svc->formDefinition($unpFormId);
+$reFields = 0;
+foreach (($reDef['sections'] ?? []) as $s) {
+    $reFields += count($s['fields'] ?? []);
+}
+check('Re-published definition keeps its fields', $reFields === 1, "fields={$reFields}");
+
+// 21. Calculated fields: settings.calc evaluates on store and overwrites the client value.
+$calcFormId = $svc->createForm(1, ['code' => 'SMOKE_CALC_' . time(), 'title' => 'Smoke Calc Form']);
+$calcVersionId = $svc->createVersion($calcFormId, 1, 'draft');
+$svc->saveStructure($calcFormId, $calcVersionId, [
+    ['title' => 'A', 'fields' => [
+        ['field_key' => 'construction_year', 'label' => 'Construction Year', 'type' => 'number'],
+        ['field_key' => 'building_age', 'label' => 'Building Age', 'type' => 'number',
+            'settings' => ['calc' => ['watch' => 'construction_year', 'expr' => 'current_year - {construction_year}']]],
+    ]],
+]);
+$svc->publish($calcFormId, 1, 'publish');
+
+$calcRec = $recordSvc->upsert($fkId, [
+    'record_uuid' => 'smoke-calc-' . time(),
+    'form_id' => $calcFormId,
+    'form_version_id' => $calcVersionId,
+    'answers' => ['construction_year' => '2000', 'building_age' => '999'],
+]);
+$ageStmt = $pdo->prepare("SELECT value_text FROM survey_answers WHERE record_id = :rid AND field_key = 'building_age'");
+$ageStmt->execute(['rid' => $calcRec['record_id']]);
+$storedAge = (string) $ageStmt->fetchColumn();
+check('Calculated field overwrites client value on store', $storedAge === (string) ((int) date('Y') - 2000), "stored={$storedAge}");
+
+// Without the watched field, any submitted calculated answer is removed.
+$calcRec2 = $recordSvc->upsert($fkId, [
+    'record_uuid' => $calcRec['record_uuid'],
+    'form_id' => $calcFormId,
+    'form_version_id' => $calcVersionId,
+    'answers' => ['construction_year' => '', 'building_age' => '42'],
+]);
+$ageStmt->execute(['rid' => $calcRec2['record_id']]);
+check('Calculated field dropped when watched value is empty', $ageStmt->fetchColumn() === false);
 
 echo PHP_EOL . "All smoke tests passed." . PHP_EOL;

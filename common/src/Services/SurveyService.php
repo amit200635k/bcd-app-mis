@@ -170,6 +170,48 @@ final class SurveyService
         }
     }
 
+    /**
+     * Move a published form back to draft mode ("unpublish").
+     *
+     * The form stops appearing on the surveyor side immediately:
+     * /v1/forms lists only status="published" forms and /v1/forms/{id}
+     * rejects non-published ones. The live version row is downgraded to
+     * "draft" (same version number, structure intact) so editing resumes on
+     * it and an immediate re-publish re-publishes THAT structure instead of
+     * creating a blank one.
+     */
+    public function unpublish(int $formId, int $userId): void
+    {
+        $pdo = Connection::instance();
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare('SELECT status FROM survey_forms WHERE id = :f FOR UPDATE');
+            $stmt->execute(['f' => $formId]);
+            $status = $stmt->fetchColumn();
+            if ($status === false) {
+                throw new RuntimeException('Form not found.');
+            }
+            if ($status !== 'published') {
+                throw new RuntimeException('Only published forms can be moved back to draft.');
+            }
+
+            // Downgrade the live published version row to draft (structure
+            // stays; version number is reused on re-publish).
+            $pdo->prepare(
+                'UPDATE survey_versions SET status = "draft", published_at = NULL
+                 WHERE form_id = :f AND status = "published"'
+            )->execute(['f' => $formId]);
+
+            $pdo->prepare('UPDATE survey_forms SET status = "draft" WHERE id = :f')
+                ->execute(['f' => $formId]);
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
     /** Get full form definition (sections/fields/options/validations/conditions) for a version. */
     public function formDefinition(int $formId, ?int $versionId = null): ?array
     {

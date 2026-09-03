@@ -1,5 +1,6 @@
 import { isLoggedIn, logout, currentUser } from '../auth';
 import { renderLogin } from './screens/login';
+import { renderForgotPassword } from './screens/forgotpassword';
 import { renderHome } from './screens/home';
 import { renderForms } from './screens/forms';
 import { renderFormFill } from './screens/formfill';
@@ -27,6 +28,7 @@ interface Route {
 
 const ROUTES: Route[] = [
   { pattern: /^login$/, title: 'Sign In', screen: renderLogin, requiresAuth: false },
+  { pattern: /^forgot-password$/, title: 'Forgot Password', screen: renderForgotPassword, requiresAuth: false },
   { pattern: /^(|home)$/, title: 'Home', screen: renderHome, requiresAuth: true },
   { pattern: /^forms$/, title: 'Surveys', screen: renderForms, requiresAuth: true },
   { pattern: /^form\/(?<id>\d+)$/, title: 'Fill Survey', screen: renderFormFill, requiresAuth: true },

@@ -108,7 +108,7 @@ ob_start(); ?>
                 <div class="d-flex align-items-center gap-2">
                     <i class="bi bi-wifi fs-3 text-success"></i>
                     <div>
-                        <a href="../api/index.php" target="_blank" class="small">/api/v1/health</a><br>
+                        <a href="../api/v1/health" target="_blank" class="small">/api/v1/health</a><br>
                         <span class="text-muted small">REST API is reachable via the front controller.</span>
                     </div>
                 </div>

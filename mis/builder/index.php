@@ -97,6 +97,9 @@ ob_start(); ?>
                         <?php elseif ($f['status'] !== 'published'): ?>
                         <a href="publish.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-success" onclick="return confirm('Publish this form? It becomes downloadable by surveyors.')"><i class="bi bi-rocket-takeoff"></i></a>
                         <?php endif; ?>
+                        <?php if ($f['status'] === 'published' && $user->hasPermission('survey_builder.publish')): ?>
+                        <a href="unpublish.php?id=<?= (int) $f['id'] ?>" class="btn btn-sm btn-outline-danger" title="Move back to draft (hidden from surveyors)" onclick="return confirm('Move this published form back to draft? Surveyors will no longer see or download it until it is published again.')"><i class="bi bi-arrow-counterclockwise"></i></a>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>

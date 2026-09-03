@@ -24,7 +24,10 @@ export async function renderLogin(root: HTMLElement): Promise<void> {
                 <input class="form-control" id="login-password" type="password" autocomplete="current-password" required />
               </div>
               <button class="btn btn-primary w-100" type="submit" id="login-submit">Sign in</button>
-              <p class="text-center text-muted small mt-3 mb-0">
+              <p class="text-center mt-3 mb-2">
+                <a href="#/forgot-password" id="login-forgot">Forgot password?</a>
+              </p>
+              <p class="text-center text-muted small mt-2 mb-0">
                 First sign-in downloads your forms for offline use.
               </p>
             </form>

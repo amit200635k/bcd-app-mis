@@ -1,7 +1,15 @@
 <?php
 
 declare(strict_types=1);
+header('Access-Control-Allow-Origin: http://localhost:8100');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Credentials: true');
 
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
 /**
  * REST API front controller.
  * All requests under /api are rewritten here via .htaccess.
@@ -22,6 +30,7 @@ $router = new Router();
 $router->post('/v1/auth/login', \App\Api\Controllers\AuthController::login(...));
 $router->post('/v1/auth/refresh', \App\Api\Controllers\AuthController::refresh(...));
 $router->post('/v1/auth/logout', \App\Api\Controllers\AuthController::logout(...));
+$router->post('/v1/auth/forgot-password', \App\Api\Controllers\AuthController::forgotPassword(...));
 $router->get('/v1/auth/me', \App\Api\Controllers\AuthController::me(...));
 
 // ---------- Masters ----------

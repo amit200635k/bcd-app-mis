@@ -9,12 +9,15 @@ import {
   getRecordAnswers,
   getRecordGps,
   getAttachment,
+  getRecordAttachments,
   updateServerRecordId,
   updateRecordStatus,
+  updateSurveyCode,
   updateAttachmentUploaded,
   audit,
   type QueueItem,
   type LocalAnswer,
+  type LocalAttachment,
 } from '../db/repos';
 import { readAttachmentBlob } from '../native/media';
 import { notify } from '../native/notify';
@@ -84,15 +87,14 @@ export async function syncNow(): Promise<{ processed: number; failed: number }> 
           if (e instanceof ApiError && e.status === 422) {
             await setQueueStatus(item.id, 'failed', e.message);
             failed++;
-            continue;
+            continue; // permanent failure — skip, keep draining other items
           }
+          // transient/backoff: schedule a retry but keep trying the remaining
+          // items this pass so one bad upload doesn't block the whole queue
           await scheduleRetry(item, e);
           failed++;
-          break; // stop draining until the retry window elapses
         }
       }
-      // after a retry was scheduled, leave the rest for the next run
-      break;
     }
     if (failed > 0 || processed > 0) {
       const stats = await getQueueStats();
@@ -146,6 +148,9 @@ async function handleUpsert(item: QueueItem): Promise<void> {
     await updateServerRecordId(item.record_uuid, created.record_id);
   }
   await updateRecordStatus(item.record_uuid, created.status ?? 'submitted', new Date().toISOString());
+  if (created.survey_code) {
+    await updateSurveyCode(item.record_uuid, created.survey_code);
+  }
   await audit('record.synced', { record_uuid: item.record_uuid, record_id: created.record_id });
 }
 
@@ -157,7 +162,17 @@ interface AttachmentPayload {
 
 async function handleAttachment(item: QueueItem): Promise<void> {
   const payload = safeParse<AttachmentPayload>(item.payload_json) ?? {};
-  const at = await getAttachment(payload.attachment_id ?? 0);
+  let at: LocalAttachment | null = null;
+
+  // Prefer the stored attachment id (set once the record is persisted).
+  if (payload.attachment_id) {
+    at = await getAttachment(payload.attachment_id);
+  }
+  // Fallback: an old queue row may carry id 0 — resolve by record + field_key.
+  if (!at && item.record_uuid && payload.field_key) {
+    const all = await getRecordAttachments(item.record_uuid);
+    at = all.find((a) => a.field_key === payload.field_key && a.upload_state === 'pending') ?? null;
+  }
   if (!at) {
     throw new ApiError('Attachment no longer exists.', 404);
   }
@@ -169,7 +184,7 @@ async function handleAttachment(item: QueueItem): Promise<void> {
 
   const blob = await readAttachmentBlob(at.local_uri ?? '', at.mime_type ?? 'application/octet-stream');
   const fd = new FormData();
-  fd.append('files[]', blob, at.file_name ?? `file_${at.id}`);
+  fd.append('files[]', blob, at.file_name ?? `file_${at.id ?? 0}`);
   fd.append('category', CATEGORY_MAP[at.category] ?? 'photo');
   if (at.field_key) {
     fd.append('field_key', at.field_key);
@@ -180,8 +195,8 @@ async function handleAttachment(item: QueueItem): Promise<void> {
     { method: 'POST', formData: fd },
   );
   const img = res.images?.[0];
-  if (img?.id) {
-    await updateAttachmentUploaded(at.id ?? 0, img.id, img.file_path);
+  if (img?.id && at.id) {
+    await updateAttachmentUploaded(at.id, img.id, img.file_path);
   }
   await audit('attachment.synced', { record_uuid: item.record_uuid, attachment_id: at.id, image_id: img?.id });
 }

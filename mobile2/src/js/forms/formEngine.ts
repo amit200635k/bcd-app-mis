@@ -3,7 +3,8 @@ import { renderSections } from './renderer';
 import { evaluateConditions, missingRequired } from '../engine/conditions';
 import { validateField, AnswerValue } from '../engine/validators';
 import { captureGps, GpsFix } from '../native/gps';
-import { takePicture, saveSignature, signatureToDataUrl, pickFile, CapturedFile } from '../native/media';
+import { takePicture, saveSignature, signatureToDataUrl, pickFile, readAttachmentBlob, stampImage, storeDataUrl, CapturedFile } from '../native/media';
+import { currentUser } from '../auth';
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 import { getDistricts, getLocationChildren, LocationItem } from '../db/repos';
 import {
@@ -357,6 +358,11 @@ export class FormEngine {
 
   /** Record a captured file as a pending attachment + answer ref. */
   private async attach(fieldKey: string, category: string, file: CapturedFile): Promise<void> {
+    // Burn survey metadata onto camera photos (survey id, district, timestamp,
+    // GPS, surveyor id) in the bottom-right, and compress to <=250 kB.
+    if (category === 'camera') {
+      await this.stampCameraPhoto(file);
+    }
     const count = this.mediaCounts.get(fieldKey) ?? 0;
     this.mediaCounts.set(fieldKey, count + 1);
     const attachment: LocalAttachment = {
@@ -388,11 +394,60 @@ export class FormEngine {
     if (preview && (category === 'camera' || category === 'signature')) {
       const img = document.createElement('img');
       img.src = file.dataUrl;
-      img.className = 'img-fluid rounded border';
+      img.className = 'img-fluid rounded border me-2 mb-2';
       img.style.maxHeight = '140px';
-      preview.innerHTML = '';
       preview.appendChild(img);
     }
+  }
+
+  /** Draw the survey metadata stamp on a camera photo and re-store it as JPEG. */
+  private async stampCameraPhoto(file: CapturedFile): Promise<void> {
+    try {
+      const user = await currentUser();
+      const surveyId = this.lookupAnswerString('survey_id') || this.formCode;
+      const district = this.lookupAnswerString('location') || '';
+      const gps = this.lookupGps();
+      const stamp = await stampImage(file.dataUrl, {
+        lines: [
+          district ? `Dist: ${district}` : 'Dist: —',
+          `GPS: ${gps ? `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}` : '—'}`,
+          `On: ${formatStampTime(new Date())}`,
+          `Survey: ${surveyId}`,
+          user ? `Surveyor: ${user.id} · ${user.full_name ?? user.username}` : 'Surveyor: —',
+        ],
+        maxBytes: 250 * 1024,
+      });
+      if (!stamp) return;
+      // Persist the stamped, compressed image in place of the original.
+      const uri = await storeDataUrl(stamp, file.fileName);
+      file.uri = uri;
+      file.dataUrl = stamp;
+      file.mimeType = 'image/jpeg';
+      file.sizeBytes = estimateSize(stamp);
+    } catch {
+      // On any stamping failure, keep the original capture.
+    }
+  }
+
+  private lookupAnswerString(key: string): string {
+    const value = this.answers[key];
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') {
+      const v = value as Record<string, unknown>;
+      return String(v.district_name ?? v[`${key}_name`] ?? v[`${key}_id`] ?? v.name ?? '');
+    }
+    return String(value);
+  }
+
+  private lookupGps(): { latitude: number; longitude: number } | null {
+    const value = this.answers['geo_location'];
+    if (!value || typeof value !== 'object') return null;
+    const v = value as Record<string, unknown>;
+    const lat = Number(v.latitude);
+    const lon = Number(v.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return { latitude: lat, longitude: lon };
+    return null;
   }
 
   /* ------------------------------------------------------------------ */
@@ -430,13 +485,31 @@ export class FormEngine {
       const preview = this.container.querySelector<HTMLElement>(`[data-media-preview="${at.field_key}"]`);
       const nameEl = this.container.querySelector<HTMLElement>(`[data-media-name="${at.field_key}"]`);
       if (nameEl) nameEl.textContent = at.file_name ?? 'attached';
-      if (preview) {
+      if (preview && (at.category === 'camera' || at.category === 'signature')) {
         const img = document.createElement('img');
-        img.className = 'img-fluid rounded border';
+        img.className = 'img-fluid rounded border me-2 mb-2';
         img.style.maxHeight = '140px';
-        img.src = `data:${at.mime_type ?? 'image/jpeg'};base64,`; // placeholder until cached read
+        img.alt = at.file_name ?? 'attachment';
         preview.appendChild(img);
+        this.loadCachedPreview(at, img);
       }
+    }
+  }
+
+  /** Asynchronously load a previously-captured attachment into its preview. */
+  private async loadCachedPreview(at: LocalAttachment, img: HTMLImageElement): Promise<void> {
+    try {
+      const blob = await readAttachmentBlob(at.local_uri ?? '', at.mime_type ?? 'application/octet-stream');
+      const objUrl: string | null = URL.createObjectURL(blob);
+      const apply = () => {
+        img.onload = () => URL.revokeObjectURL(objUrl);
+        img.src = objUrl;
+      };
+      // Fall back to revoking on error as well.
+      img.onerror = () => URL.revokeObjectURL(objUrl);
+      apply();
+    } catch {
+      img.alt = at.file_name ?? 'attachment';
     }
   }
 
@@ -489,9 +562,11 @@ export class FormEngine {
       }
       case 'gps': {
         const display = root.querySelector<HTMLInputElement>(`[data-gps-display="${key}"]`);
-        if (display && value && typeof value === 'object') {
+        const hidden = root.querySelector<HTMLInputElement>(`[data-gps-value="${key}"]`);
+        if (value && typeof value === 'object') {
           const v = value as { latitude: number; longitude: number; accuracy: number };
-          display.value = `${v.latitude.toFixed(6)}, ${v.longitude.toFixed(6)} (±${v.accuracy.toFixed(1)}m)`;
+          if (display) display.value = `${v.latitude.toFixed(6)}, ${v.longitude.toFixed(6)} (±${v.accuracy.toFixed(1)}m)`;
+          if (hidden) hidden.value = JSON.stringify(value);
         }
         break;
       }
@@ -858,6 +933,16 @@ export class FormEngine {
 function nextLevel(level: CascadeLevel): ChildLevel | null {
   const idx = CASCADE_LEVELS.indexOf(level);
   return idx >= 0 && idx < CASCADE_LEVELS.length - 1 ? (CASCADE_LEVELS[idx + 1] as ChildLevel) : null;
+}
+
+function formatStampTime(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function estimateSize(dataUrl: string): number {
+  const base64 = dataUrl.split(',')[1] ?? '';
+  return Math.round((base64.length * 3) / 4);
 }
 
 function cryptoRandomUuid(): string {

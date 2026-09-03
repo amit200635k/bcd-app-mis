@@ -15,13 +15,17 @@ export const APP_NAME = 'BCD Survey';
  * `window.__BCD_CONFIG__.API_BASE_URL` first (set via public/custom.js).
  */
 export const API_BASE_URL =
-  'http://127.0.0.1:8080/bcd-app/api/v1';
+  'http://localhost:81/bcd-app/api/v1';
 
+
+export const API_BASE_URL_Livex =
+  'https://jswm.jharkhand.gov.in/bcdapp/api/v1';
 /** Runtime API URL — checks custom.js override first, falls back to compiled constant. */
 export function getApiBaseUrl(): string {
   try {
     const runtime = (window as unknown as Record<string, unknown>).__BCD_CONFIG__;
     if (runtime && typeof runtime === 'object' && 'API_BASE_URL' in runtime) {
+      console.log('Using runtime API_BASE_URL:', (runtime as Record<string, string>).API_BASE_URL);
       return String((runtime as Record<string, string>).API_BASE_URL);
     }
   } catch { /* window not available in tests */ }

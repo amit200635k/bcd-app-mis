@@ -71,7 +71,7 @@ export async function renderFormFill(root: HTMLElement, params: RouteParams): Pr
     formTitle: form.title,
     formCode: form.code,
     formId: form.id,
-    formVersionId: form.current_version ?? form.version ?? 1,
+    formVersionId: form.version ?? form.current_version ?? 1,
     scope,
     existing,
   });

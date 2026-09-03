@@ -76,11 +76,12 @@ async function misSuite(page) {
     await assertNoPhpWarnings(page, 'dashboard.php');
 
     step('MIS: All roles can login and access their dashboards');
+    const roleCreds = require('./lib.js').CREDS;
     for (const role of ['district', 'block', 'panchayat', 'village', 'surveyor']) {
         await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
         await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
-        await type(page, 'input[name=username]', CREDS[role].username);
-        await type(page, 'input[name=password]', CREDS[role].password);
+        await type(page, 'input[name=username]', roleCreds[role].username);
+        await type(page, 'input[name=password]', roleCreds[role].password);
         await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle0' }),
             page.click('button[type=submit]'),
@@ -92,8 +93,8 @@ async function misSuite(page) {
     // Log back in as admin for remaining tests
     await page.goto(BASE + '/mis/logout.php', { waitUntil: 'networkidle0' });
     await page.goto(BASE + '/mis/login.php', { waitUntil: 'networkidle0' });
-    await type(page, 'input[name=username]', CREDS.admin.username);
-    await type(page, 'input[name=password]', CREDS.admin.password);
+    await type(page, 'input[name=username]', roleCreds.admin.username);
+    await type(page, 'input[name=password]', roleCreds.admin.password);
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
         page.click('button[type=submit]'),
@@ -417,6 +418,45 @@ async function misSuite(page) {
     ok('no sync button when no pending changes', syncedRow && !syncedRow.hasSyncBtn);
     await assertNoPhpWarnings(page, 'builder/sync.php');
 
+    step('MIS: Unpublish moves a published form back to draft');
+    const clickedUnpub = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        const a = row && row.querySelector('a[href*="unpublish.php"]');
+        if (!a) return false;
+        a.click(); // confirm() is auto-accepted by wirePage
+        return true;
+    }, code);
+    ok('unpublish button present + clicked', clickedUnpub);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'moved back to draft');
+    ok('unpublish flash shown', await hasText(page, 'hidden from surveyors'));
+    await waitForText(page, 'Survey Builder');
+    const unpubRow = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        if (!row) return null;
+        return {
+            text: row.textContent,
+            badge: row.querySelector('.badge') ? row.querySelector('.badge').textContent.trim() : '',
+            hasPublish: !!row.querySelector('a[href*="publish.php"]'),
+            hasUnpub: !!row.querySelector('a[href*="unpublish.php"]'),
+        };
+    }, code);
+    ok('form badge shows draft', unpubRow && unpubRow.badge === 'draft', JSON.stringify(unpubRow));
+    ok('publish (rocket) button back for draft form', unpubRow && unpubRow.hasPublish && !unpubRow.hasUnpub);
+    // Re-publish so later sections see the form as live again.
+    const clickedRepub = await page.evaluate((c) => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes(c));
+        const a = row && row.querySelector('a[href*="publish.php"]');
+        if (!a) return false;
+        a.click();
+        return true;
+    }, code);
+    ok('re-publish clicked', clickedRepub);
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    await waitForText(page, 'published. It is now available');
+    ok('re-publish flash shown', await hasText(page, 'available for mobile download'));
+    await assertNoPhpWarnings(page, 'builder/unpublish.php');
+
     step("MIS: Gov't Building editor loads (form 40)");
     await page.goto(BASE + '/mis/builder/edit.php?id=' + govt.form, { waitUntil: 'networkidle0' });
     await page.waitForFunction(() => typeof state !== 'undefined' && state.length >= 17, { timeout: 15000 });
@@ -455,6 +495,43 @@ async function misSuite(page) {
     ok('preview renders dropdown/master selects with options', previewInfo.selects >= 42 && previewInfo.withOptions >= 40);
     ok('preview has location cascade block', previewInfo.cascades === 1);
     await assertNoPhpWarnings(page, 'builder/preview.php (govt building)');
+
+    step("MIS: Office Building preview auto-calculates age");
+    // Resolve the office form id from the builder index (never hardcode ids).
+    await page.goto(BASE + '/mis/builder/index.php', { waitUntil: 'networkidle0' });
+    await waitForText(page, 'Survey Builder');
+    const officeId = await page.evaluate(() => {
+        const row = Array.from(document.querySelectorAll('tr')).find((tr) => tr.textContent.includes('OFFICE_BUILDING_SURVEY'));
+        const a = row && row.querySelector('a[href*="edit.php?id="]');
+        if (!a) return null;
+        return new URL(a.href, location.origin).searchParams.get('id');
+    });
+    ok('office building form found in builder index', !!officeId, `id=${officeId}`);
+    if (officeId) {
+        await page.goto(BASE + '/mis/builder/preview.php?id=' + officeId, { waitUntil: 'networkidle0' });
+        await page.waitForFunction(() => document.querySelectorAll('[data-field-key]').length > 20, { timeout: 10000 });
+        const calc = await page.evaluate(() => {
+            const wrap = (k) => document.querySelector(`[data-field-key="${k}"]`);
+            const inp = (k) => wrap(k) && wrap(k).querySelector('input');
+            if (!inp('construction_year') || !inp('building_age')) return { ok: false };
+            const setYear = (y) => {
+                inp('construction_year').value = y;
+                inp('construction_year').dispatchEvent(new Event('input', { bubbles: true }));
+            };
+            setYear('2000');
+            const computed = inp('building_age').value;
+            setYear('1990');
+            const recomputed = inp('building_age').value;
+            setYear('');
+            const cleared = inp('building_age').value;
+            return { ok: true, computed, recomputed, cleared, expected: String(new Date().getFullYear() - 2000) };
+        });
+        ok('age calculated on construction year change', calc.ok && calc.computed === calc.expected,
+            `computed=${calc.computed} expected=${calc.expected}`);
+        ok('age recalculates when year changes', calc.ok && calc.recomputed === String(new Date().getFullYear() - 1990), `got=${calc.recomputed}`);
+        ok('age cleared when year is emptied', calc.ok && calc.cleared === '', `got=${calc.cleared}`);
+        await assertNoPhpWarnings(page, 'builder/preview.php (office building)');
+    }
 
     step("MIS: Gov't Building preview location cascade chains");
     const chain = await page.evaluate(async () => {
@@ -501,6 +578,9 @@ async function misSuite(page) {
     await waitForText(page, 'Survey Monitoring');
     ok('monitoring page loads', await hasText(page, 'Submitted'));
     ok('monitoring shows surveyor name', await hasText(page, 'Ravi Kumar'));
+    ok('monitoring lists Survey ID column', await hasText(page, 'Survey ID'));
+    const searchBox = await page.evaluate(() => !!document.querySelector('input[name=q]'));
+    ok('monitoring has survey-id search box', searchBox);
     const viewLink = await page.evaluate(() => !!document.querySelector('a[href*="records.php?id="]'));
     ok('monitoring has record view link', viewLink);
     const verifyVisible = await page.evaluate(() =>
@@ -510,8 +590,14 @@ async function misSuite(page) {
     await assertNoPhpWarnings(page, 'monitoring.php');
 
     step('MIS: View submitted record detail');
+    // Open the seeded demo record specifically — anchor on its uuid prefix
+    // ("demo-000…", rendered in the Record cell). "First link" drifts, and a
+    // surveyor-name match now also hits the IEC test records submitted BY
+    // rk_surveyor ("Ravi Kumar").
     const openedDetail = await page.evaluate(() => {
-        const a = document.querySelector('a[href*="records.php?id="]');
+        const rows = Array.from(document.querySelectorAll('tbody tr'));
+        const row = rows.find((tr) => /demo-000/.test(tr.innerText) && !/iec-/.test(tr.innerText));
+        const a = row && row.querySelector('a[href*="records.php?id="]');
         if (!a) return false;
         a.click();
         return true;
@@ -519,7 +605,12 @@ async function misSuite(page) {
     ok('record view link opened', openedDetail);
     await page.waitForNavigation({ waitUntil: 'networkidle0' });
     await waitForText(page, 'Record Detail');
-    ok('record detail shows answers', await hasText(page, 'Landowner Name') && await hasText(page, 'Ravi Kumar'));
+    // Label cells render CSS-uppercased ("LANDOWNER NAME") since the UI
+    // polish, so compare case-insensitively (same as the KPI-card checks).
+    ok('record detail shows answers', await page.evaluate(() => {
+        const t = document.body.innerText.toLowerCase();
+        return t.includes('landowner name') && t.includes('ravi kumar');
+    }));
     ok('record detail shows submitter + status', await hasText(page, 'Submitted by') && await hasText(page, 'Submitted'));
     await assertNoPhpWarnings(page, 'records.php');
     await clickText(page, 'Back to Monitoring');
@@ -769,6 +860,7 @@ async function misSuite(page) {
             })).json();
             hiddenHasLocation = (rec.data.answers || []).some((a) => a.field_key === 'e2e_location');
         }
+        const keptCode = (kept.json.data || {}).survey_code || '';
 
         // The two 201 stores should have populated the mobile sync queue.
         const sync = await (await fetch(api('/sync/status'), {
@@ -785,6 +877,7 @@ async function misSuite(page) {
             rejectedHasField: !!(rejected.json.errors && rejected.json.errors.e2e_location),
             rejectedJson: JSON.stringify(rejected.json),
             keptStatus: kept.status,
+            keptCode,
             syncPending,
         };
     }, { b: BASE, c: code });
@@ -797,6 +890,17 @@ async function misSuite(page) {
     ok('visible conditional answer stored via API (201)', condApi.keptStatus === 201);
     ok('record store populates sync queue (pending > 0)', typeof condApi.syncPending === 'number' && condApi.syncPending > 0,
         `pending=${condApi.syncPending}`);
+    ok('API store returns JH/… survey_code', /^JH\/\d{2}\/\d{2}\/\d{2}\/\d{4,}\/\d{4}$/.test(condApi.keptCode), condApi.keptCode);
+
+    // Survey ID round-trip: search Monitoring by the generated code.
+    if (condApi.keptCode) {
+        step('MIS: Survey ID visible + searchable in Monitoring');
+        await loginAs(page, 'admin');
+        await page.goto(BASE + '/mis/monitoring.php?q=' + encodeURIComponent(condApi.keptCode), { waitUntil: 'networkidle0' });
+        await waitForText(page, 'Survey Monitoring');
+        const codeShown = await page.evaluate((code) => document.body.innerText.includes(code), condApi.keptCode);
+        ok('monitoring finds the record by its survey_code', codeShown);
+    }
 }
 
 /* ====================== ROLE DASHBOARD SUITE ====================== */
@@ -859,7 +963,7 @@ async function adminSuite(page) {
 
     step('ADMIN: Admin panel dashboard');
     await page.goto(BASE + '/admin/dashboard.php', { waitUntil: 'networkidle0' });
-    await waitForText(page, 'Admin Dashboard');
+    await waitForText(page, 'System overview'); // h1 was reworded to "Dashboard" in the UI polish
     for (const label of ['Users', 'Districts', 'Villages', 'Survey Forms', 'Records', 'Audit Entries', 'Replication Pending', 'Replication Failed']) {
         ok(`admin card "${label}"`, await hasText(page, label));
     }
@@ -949,7 +1053,7 @@ async function adminSuite(page) {
     await type(page, 'input[name=setting_value]', 'hello-world');
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
-        page.click('button.btn-danger'),
+        page.click('form button'), // "Save" (re-styled btn-primary in UI polish)
     ]);
     ok('setting saved flash', await hasText(page, 'Setting saved.'));
     ok('setting appears in table', await hasText(page, sKey));
@@ -963,7 +1067,7 @@ async function adminSuite(page) {
     await type(page, 'textarea[name=body]', 'Automated broadcast from headed-Chrome E2E run.');
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
-        page.click('button.btn-danger'),
+        page.click('form button'), // "Broadcast" (re-styled btn-primary in UI polish)
     ]);
     ok('notification sent flash', await hasText(page, 'Notification sent.'));
     ok('notification in recently sent', await hasText(page, nTitle));
@@ -976,7 +1080,7 @@ async function adminSuite(page) {
     await type(page, 'input[name=action]', 'login');
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
-        page.click('button.btn-dark'),
+        page.click('form button'), // "Filter" (re-styled btn-primary in UI polish)
     ]);
     ok('filtered audit loads', await hasText(page, 'Audit Logs'));
     await assertNoPhpWarnings(page, 'admin/audit.php');

@@ -1,5 +1,5 @@
 export const DB_NAME = 'bcd_survey';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /**
  * SQLite schema (v1). Mirrors the architecture doc's table set, mapped to the
@@ -86,6 +86,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     form_version_id INTEGER,
     form_code TEXT,
     form_title TEXT,
+    survey_code TEXT,
     status TEXT,
     device_id TEXT,
     server_record_id INTEGER,

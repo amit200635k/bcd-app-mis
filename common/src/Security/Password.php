@@ -28,6 +28,26 @@ final class Password
         return password_verify($plain, $hash);
     }
 
+    /** Generate a random password that meets the password policy. */
+    public static function generate(int $length = 10): string
+    {
+        $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        $lower = 'abcdefghijkmnpqrstuvwxyz';
+        $digits = '23456789';
+        $pool = $upper . $lower . $digits;
+
+        $chars = [
+            $upper[random_int(0, strlen($upper) - 1)],
+            $lower[random_int(0, strlen($lower) - 1)],
+            $digits[random_int(0, strlen($digits) - 1)],
+        ];
+        for ($i = count($chars); $i < $length; $i++) {
+            $chars[] = $pool[random_int(0, strlen($pool) - 1)];
+        }
+        shuffle($chars);
+        return implode('', $chars);
+    }
+
     public static function needsRehash(string $hash): bool
     {
         return password_needs_rehash($hash, self::ALGO, ['cost' => self::COST]);

@@ -31,7 +31,7 @@ export async function renderRecords(root: HTMLElement): Promise<void> {
           <div class="d-flex justify-content-between align-items-center">
             <div class="me-2">
               <div class="fw-semibold">${r.form_title ?? `Form #${r.form_id}`}</div>
-              <div class="small text-muted font-monospace">${r.record_uuid.slice(0, 8)}… · ${(r.updated_at ?? '').slice(0, 16).replace('T', ' ')}</div>
+              <div class="small text-muted font-monospace">${r.survey_code ? `${r.survey_code} · ` : ''}${r.record_uuid.slice(0, 8)}… · ${(r.updated_at ?? '').slice(0, 16).replace('T', ' ')}</div>
             </div>
             <span class="badge ${badge[r.status] ?? 'bg-secondary'}">${r.status}</span>
           </div>
