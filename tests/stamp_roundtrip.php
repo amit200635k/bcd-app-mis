@@ -108,14 +108,23 @@ if ($rid <= 0) {
     exit(1);
 }
 
-// 3) generate a solid-colour test JPEG
+// 3) generate a large noisy test JPEG (3000x2000, incompressible -> must be downscaled)
 $jpg = sys_get_temp_dir() . '/' . 'stamp_input_' . bin2hex(random_bytes(4)) . '.jpg';
-$im = imagecreatetruecolor(640, 480);
-imagefilledrectangle($im, 0, 0, 639, 479, imagecolorallocate($im, 20, 100, 200));
-imagefilledrectangle($im, 100, 100, 300, 300, imagecolorallocate($im, 220, 30, 30));
+$im = imagecreatetruecolor(3000, 2000);
+imagefilledrectangle($im, 0, 0, 2999, 1999, imagecolorallocate($im, 20, 100, 200));
+imagefilledrectangle($im, 500, 500, 1500, 1500, imagecolorallocate($im, 220, 30, 30));
+for ($y = 0; $y < 2000; $y += 2) {
+    for ($x = 0; $x < 3000; $x += 2) {
+        $n = mt_rand(0, 60) - 30;
+        imagesetpixel($im, $x, $y, imagecolorallocate($im,
+            max(0, min(255, ($x >= 500 && $x <= 1500 && $y >= 500 && $y <= 1500 ? 220 : 20) + $n)),
+            max(0, min(255, ($x >= 500 && $x <= 1500 && $y >= 500 && $y <= 1500 ? 30 : 100) + $n)),
+            max(0, min(255, ($x >= 500 && $x <= 1500 && $y >= 500 && $y <= 1500 ? 30 : 200) + $n))));
+    }
+}
 imagejpeg($im, $jpg, 92);
 imagedestroy($im);
-check('generated test JPEG', is_file($jpg), filesize($jpg) . ' bytes');
+check('generated test JPEG (3000x2000 noisy)', is_file($jpg), filesize($jpg) . ' bytes');
 
 // 4) upload through the real API (exercises RecordController::photos() + stampPhoto)
 $ch = curl_init($base . '/records/' . $rid . '/photos');
@@ -162,9 +171,13 @@ $w = imagesx($storedIm);
 $h = imagesy($storedIm);
 $ow = imagesx($origIm);
 $oh = imagesy($origIm);
-check('stored image resized to 1000x650', $w === 1000 && $h === 650, "{$w}x{$h}");
-check('stored file re-encoded (size changed)', filesize($stored) !== filesize($jpg),
-    sprintf('stored=%d input=%d', filesize($stored), filesize($jpg)));
+$aspectIn = $ow / $oh;
+$aspectOut = $w / $h;
+check('aspect ratio preserved (no crop)', abs($aspectIn - $aspectOut) < 0.01,
+    sprintf('in=%.3f out=%.3f (%dx%d -> %dx%d)', $aspectIn, $aspectOut, $ow, $oh, $w, $h));
+check('large image was downscaled', $w < $ow && $h < $oh, "{$ow}x{$oh} -> {$w}x{$h}");
+check('stored file within 300 KB budget', filesize($stored) <= 300 * 1024,
+    filesize($stored) . ' bytes');
 
 function px(GdImage $im, int $x, int $y): array
 {

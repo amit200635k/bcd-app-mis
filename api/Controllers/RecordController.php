@@ -409,51 +409,75 @@ final class RecordController
                 return;
             }
 
-            // Resize to a fixed 1000x650 (center-crop cover, aspect preserved).
-            $targetW = 1000;
-            $targetH = 650;
-            $scale = max($targetW / $w, $targetH / $h);
-            $rw = max(1, (int) round($w * $scale));
-            $rh = max(1, (int) round($h * $scale));
-            $resized = imagecreatetruecolor($rw, $rh);
-            $trans = imagecolorallocatealpha($resized, 0, 0, 0, 127);
-            imagealphablending($resized, false);
-            imagesavealpha($resized, true);
-            imagefill($resized, 0, 0, $trans);
-            imagecopyresampled($resized, $img, 0, 0, 0, 0, $rw, $rh, $w, $h);
-            imagedestroy($img);
+            // No cropping: downscale large originals (aspect preserved) and keep
+            // the re-encoded file under ~300 KB (lower quality first, then size).
+            $maxBytes = 300 * 1024;
+            $level = $mime === 'image/png' ? 6 : 82;
+            $wk = $img;
+            $wkW = $w;
+            $wkH = $h;
 
-            $crop = imagecreatetruecolor($targetW, $targetH);
-            imagealphablending($crop, false);
-            imagesavealpha($crop, true);
-            imagefill($crop, 0, 0, $trans);
-            $sx = (int) floor(($rw - $targetW) / 2);
-            $sy = (int) floor(($rh - $targetH) / 2);
-            $copied = imagecopy($crop, $resized, 0, 0, max(0, $sx), max(0, $sy), min($targetW, $rw), min($targetH, $rh));
-            imagedestroy($resized);
-            if ($copied === false) {
-                imagedestroy($crop);
-                return;
+            $encode = static function (\GdImage $im, string $mime, int $level): string {
+                ob_start();
+                if ($mime === 'image/png') {
+                    imagepng($im, null, $level & 0x0F);
+                } elseif ($mime === 'image/webp') {
+                    imagewebp($im, null, $level);
+                } else {
+                    imagejpeg($im, null, $level);
+                }
+                return (string) ob_get_clean();
+            };
+
+            $scale = 1.0;
+            for ($i = 0; $i < 40; $i++) {
+                if (strlen($encode($wk, $mime, $level)) <= $maxBytes) {
+                    break;
+                }
+                if ($mime !== 'image/png' && $level > 46) {
+                    $level -= 8;
+                    continue;
+                }
+                if ($wkW <= 240 || $wkH <= 180) {
+                    break;
+                }
+                $scale = max(0.1, $scale * 0.85);
+                $nw = max(1, (int) round($w * $scale));
+                $nh = max(1, (int) round($h * $scale));
+                $scaled = imagecreatetruecolor($nw, $nh);
+                $t = imagecolorallocatealpha($scaled, 0, 0, 0, 127);
+                imagealphablending($scaled, false);
+                imagesavealpha($scaled, true);
+                imagefill($scaled, 0, 0, $t);
+                if (!imagecopyresampled($scaled, $img, 0, 0, 0, 0, $nw, $nh, $w, $h)) {
+                    imagedestroy($scaled);
+                    break;
+                }
+                if ($wk !== $img) {
+                    imagedestroy($wk);
+                }
+                $wk = $scaled;
+                $wkW = $nw;
+                $wkH = $nh;
             }
-            $img = $crop;
-            $w = $targetW;
-            $h = $targetH;
+            $w = $wkW;
+            $h = $wkH;
 
             $pad = max(8, (int) round($w * 0.02));
             $font = self::ttfFont();
 
             if ($font !== null) {
-                $fontSize = max(14, (int) round($h * 0.032));
-                $lineGap = (int) round($fontSize * 1.3);
+                $fontSize = max(12, (int) round($h * 0.022));
+                $lineGap = (int) round($fontSize * 1.25);
             } else {
-                $fontSize = 5; // GD built-in font size 5
-                $lineGap = 14;
+                $fontSize = 4; // GD built-in font size 4
+                $lineGap = 12;
             }
 
             // No dark background: draw the stamp directly over the visible image,
             // using an outline so the text stays readable on any background.
-            $white = imagecolorallocate($img, 255, 255, 255);
-            $black = imagecolorallocate($img, 0, 0, 0);
+            $white = imagecolorallocate($wk, 255, 255, 255);
+            $black = imagecolorallocate($wk, 0, 0, 0);
             $outline = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
 
             $y = $h - $pad;
@@ -463,24 +487,21 @@ final class RecordController
                     $tw = $box !== false ? max(0, $box[2] - $box[0]) : 0;
                     $x = max(0, $w - $pad - $tw);
                     foreach ($outline as [$dx, $dy]) {
-                        imagettftext($img, $fontSize, 0, $x + $dx, $y + $dy, $black, $font, $lines[$i]);
+                        imagettftext($wk, $fontSize, 0, $x + $dx, $y + $dy, $black, $font, $lines[$i]);
                     }
-                    imagettftext($img, $fontSize, 0, $x, $y, $white, $font, $lines[$i]);
+                    imagettftext($wk, $fontSize, 0, $x, $y, $white, $font, $lines[$i]);
                 } else {
-                    $wpx = imagefontwidth(5) * strlen($lines[$i]);
+                    $wpx = imagefontwidth(4) * strlen($lines[$i]);
                     $x = max(0, $w - $pad - $wpx);
-                    imagestring($img, 5, $x, max(0, $y - 14), $lines[$i], $white);
+                    imagestring($wk, 4, $x, max(0, $y - 11), $lines[$i], $white);
                 }
                 $y -= $lineGap;
             }
 
             // Write the stamped image back over the original.
-            if ($mime === 'image/png') {
-                imagepng($img, $dest, 8);
-            } elseif ($mime === 'image/webp') {
-                imagewebp($img, $dest, 80);
-            } else {
-                imagejpeg($img, $dest, 88);
+            file_put_contents($dest, $encode($wk, $mime, $level));
+            if ($wk !== $img) {
+                imagedestroy($wk);
             }
             imagedestroy($img);
         } catch (\Throwable $e) {
