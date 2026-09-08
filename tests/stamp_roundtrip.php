@@ -160,7 +160,9 @@ if ($storedIm === false || $origIm === false) {
 
 $w = imagesx($storedIm);
 $h = imagesy($storedIm);
-check('stored dimensions unchanged', $w === 640 && $h === 480, "{$w}x{$h}");
+$ow = imagesx($origIm);
+$oh = imagesy($origIm);
+check('stored image resized to 1000x650', $w === 1000 && $h === 650, "{$w}x{$h}");
 check('stored file re-encoded (size changed)', filesize($stored) !== filesize($jpg),
     sprintf('stored=%d input=%d', filesize($stored), filesize($jpg)));
 
@@ -183,13 +185,10 @@ function lumAvg(GdImage $im, int $w, int $h, int $y0, int $y1): float
     return $n > 0 ? $sum / $n : 0.0;
 }
 
-$topAvg  = lumAvg($storedIm, $w, $h, 20, (int) ($h * 0.4));
 $bandAvg = lumAvg($storedIm, $w, $h, (int) ($h * 0.88), $h - 1);
-$origBottom = lumAvg($origIm, $w, $h, (int) ($h * 0.9), $h - 1);
-check('bottom band clearly darker than original bottom', $bandAvg < $origBottom * 0.85,
+$origBottom = lumAvg($origIm, $ow, $oh, (int) ($oh * 0.9), $oh - 1);
+check('no dark band behind the text (background preserved)', $bandAvg > $origBottom * 0.75,
     sprintf('band=%.1f origBottom=%.1f', $bandAvg, $origBottom));
-check('input image had no band (sanity)',
-    $origBottom > $bandAvg, sprintf('origBottom=%.1f bandAvg=%.1f', $origBottom, $bandAvg));
 
 $white = 0;
 $minY = $h;
@@ -210,7 +209,7 @@ for ($x = 0; $x < $w; $x++) {
 }
 check('six stamp lines drawn (white text pixels)', $white > 300, 'white=' . $white);
 check('stamp text spans ~6 lines (vertical spread)',
-    $maxY - $minY >= 60 && $maxY - $minY <= 150, 'spread=' . ($maxY - $minY));
+    $maxY - $minY >= 60 && $maxY - $minY <= 280, 'spread=' . ($maxY - $minY));
 check('stamp text is right-aligned', $rightHalf > $white * 0.5, "rightHalf={$rightHalf} white={$white}");
 
 $topLeft = px($storedIm, 50, 50);

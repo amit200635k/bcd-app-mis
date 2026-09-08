@@ -409,31 +409,52 @@ final class RecordController
                 return;
             }
 
+            // Resize to a fixed 1000x650 (center-crop cover, aspect preserved).
+            $targetW = 1000;
+            $targetH = 650;
+            $scale = max($targetW / $w, $targetH / $h);
+            $rw = max(1, (int) round($w * $scale));
+            $rh = max(1, (int) round($h * $scale));
+            $resized = imagecreatetruecolor($rw, $rh);
+            $trans = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+            imagealphablending($resized, false);
+            imagesavealpha($resized, true);
+            imagefill($resized, 0, 0, $trans);
+            imagecopyresampled($resized, $img, 0, 0, 0, 0, $rw, $rh, $w, $h);
+            imagedestroy($img);
+
+            $crop = imagecreatetruecolor($targetW, $targetH);
+            imagealphablending($crop, false);
+            imagesavealpha($crop, true);
+            imagefill($crop, 0, 0, $trans);
+            $sx = (int) floor(($rw - $targetW) / 2);
+            $sy = (int) floor(($rh - $targetH) / 2);
+            $copied = imagecopy($crop, $resized, 0, 0, max(0, $sx), max(0, $sy), min($targetW, $rw), min($targetH, $rh));
+            imagedestroy($resized);
+            if ($copied === false) {
+                imagedestroy($crop);
+                return;
+            }
+            $img = $crop;
+            $w = $targetW;
+            $h = $targetH;
+
             $pad = max(8, (int) round($w * 0.02));
             $font = self::ttfFont();
 
             if ($font !== null) {
-                $fontSize = max(13, (int) round($h * 0.028));
-                $lineGap = (int) round($fontSize * 1.35);
+                $fontSize = max(14, (int) round($h * 0.032));
+                $lineGap = (int) round($fontSize * 1.3);
             } else {
                 $fontSize = 5; // GD built-in font size 5
-                $lineGap = 16;
+                $lineGap = 14;
             }
 
-            // Band tall enough to hold all the stamp lines.
-            $bandH = max(56, (int) round(min($h * 0.28, $lineGap * count($lines) + $pad * 2)));
-
-            // Translucent dark gradient band across the bottom for legibility.
-            $steps = 12;
-            $bandTop = $h - $bandH;
-            for ($i = 0; $i < $steps; $i++) {
-                $alpha = (int) (6 + (66 * $i) / $steps);
-                $color = imagecolorallocatealpha($img, 0, 0, 0, $alpha);
-                $y0 = $bandTop + (int) (($bandH / $steps) * $i);
-                $y1 = $bandTop + (int) (($bandH / $steps) * ($i + 1)) - 1;
-                imagefilledrectangle($img, 0, $y0, $w, $y1, $color);
-            }
+            // No dark background: draw the stamp directly over the visible image,
+            // using an outline so the text stays readable on any background.
             $white = imagecolorallocate($img, 255, 255, 255);
+            $black = imagecolorallocate($img, 0, 0, 0);
+            $outline = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
 
             $y = $h - $pad;
             for ($i = count($lines) - 1; $i >= 0; $i--) {
@@ -441,6 +462,9 @@ final class RecordController
                     $box = imagettfbbox($fontSize, 0, $font, $lines[$i]);
                     $tw = $box !== false ? max(0, $box[2] - $box[0]) : 0;
                     $x = max(0, $w - $pad - $tw);
+                    foreach ($outline as [$dx, $dy]) {
+                        imagettftext($img, $fontSize, 0, $x + $dx, $y + $dy, $black, $font, $lines[$i]);
+                    }
                     imagettftext($img, $fontSize, 0, $x, $y, $white, $font, $lines[$i]);
                 } else {
                     $wpx = imagefontwidth(5) * strlen($lines[$i]);
