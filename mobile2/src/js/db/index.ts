@@ -73,6 +73,14 @@ async function migrate(db: SQLiteDBConnection): Promise<void> {
   if (!cols.values?.some((c: { name?: string }) => c.name === 'survey_code')) {
     await db.execute('ALTER TABLE survey_header ADD COLUMN survey_code TEXT');
   }
+  // v2 → v3: user_id on records + queue for per-user data isolation (user switch).
+  if (!cols.values?.some((c: { name?: string }) => c.name === 'user_id')) {
+    await db.execute('ALTER TABLE survey_header ADD COLUMN user_id INTEGER');
+  }
+  const qcols = await db.query('PRAGMA table_info(sync_queue)');
+  if (!qcols.values?.some((c: { name?: string }) => c.name === 'user_id')) {
+    await db.execute('ALTER TABLE sync_queue ADD COLUMN user_id INTEGER');
+  }
   await db.execute(`PRAGMA user_version = ${DB_VERSION}`);
 }
 

@@ -35,6 +35,12 @@ export async function getUser(): Promise<LocalUser | null> {
   return rows[0] ?? null;
 }
 
+/** Id of the currently signed-in user (or null when signed out / unknown). */
+export async function currentUserId(): Promise<number | null> {
+  const u = await getUser();
+  return u?.id ?? null;
+}
+
 export async function clearUsers(): Promise<void> {
   await exec('DELETE FROM users');
 }
@@ -335,6 +341,7 @@ export async function markNotificationRead(id: number): Promise<void> {
 
 export interface LocalRecordHeader {
   record_uuid: string;
+  user_id?: number | null;
   form_id: number;
   form_version_id: number;
   form_code?: string | null;
@@ -388,10 +395,11 @@ export async function saveRecord(
   try {
     await run(
       `INSERT OR REPLACE INTO survey_header
-         (record_uuid, form_id, form_version_id, form_code, form_title, survey_code, status, device_id, server_record_id, gps_json, created_at, updated_at, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (record_uuid, user_id, form_id, form_version_id, form_code, form_title, survey_code, status, device_id, server_record_id, gps_json, created_at, updated_at, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         header.record_uuid,
+        header.user_id ?? null,
         header.form_id,
         header.form_version_id,
         header.form_code ?? null,
@@ -464,10 +472,19 @@ export async function addAttachment(at: LocalAttachment): Promise<number> {
 }
 
 export async function getRecords(formId?: number | null): Promise<LocalRecordHeader[]> {
+  const uid = await currentUserId();
+  const scoped = uid ? ' AND user_id = ?' : '';
+  const params: unknown[] = uid ? [uid] : [];
   if (formId) {
-    return query<LocalRecordHeader>('SELECT * FROM survey_header WHERE form_id = ? ORDER BY updated_at DESC', [formId]);
+    return query<LocalRecordHeader>(
+      `SELECT * FROM survey_header WHERE form_id = ?${scoped} ORDER BY updated_at DESC`,
+      [formId, ...params],
+    );
   }
-  return query<LocalRecordHeader>('SELECT * FROM survey_header ORDER BY updated_at DESC');
+  return query<LocalRecordHeader>(
+    `SELECT * FROM survey_header WHERE 1=1${scoped} ORDER BY updated_at DESC`,
+    params,
+  );
 }
 
 export async function getRecord(uuid: string): Promise<LocalRecordHeader | null> {
@@ -525,13 +542,56 @@ export async function updateAttachmentUploaded(id: number, serverImageId: number
 }
 
 export async function deleteRecord(uuid: string): Promise<void> {
+  const uid = await currentUserId();
   await beginTransaction();
   try {
-    await run('DELETE FROM survey_header WHERE record_uuid = ?', [uuid]);
+    await run(uid ? 'DELETE FROM survey_header WHERE record_uuid = ? AND user_id = ?' : 'DELETE FROM survey_header WHERE record_uuid = ?', uid ? [uuid, uid] : [uuid]);
     await run('DELETE FROM survey_answers WHERE record_uuid = ?', [uuid]);
     await run('DELETE FROM gps_logs WHERE record_uuid = ?', [uuid]);
     await run('DELETE FROM attachments WHERE record_uuid = ?', [uuid]);
     await run('DELETE FROM sync_queue WHERE record_uuid = ?', [uuid]);
+    await endTransaction(true);
+  } catch (e) {
+    await endTransaction(false);
+    throw e;
+  }
+}
+
+/**
+ * Keep only the signed-in user's survey data on this device (records +
+ * queue). Removes records owned by another user, and adopts legacy rows with
+ * no owner to the current user. Call after login when the signed-in user may
+ * have changed.
+ */
+export async function adoptOrphanRecords(userId: number): Promise<void> {
+  await beginTransaction();
+  try {
+    await run('UPDATE survey_header SET user_id = ? WHERE user_id IS NULL', [userId]);
+    await run('UPDATE sync_queue SET user_id = ? WHERE user_id IS NULL', [userId]);
+    await endTransaction(true);
+  } catch (e) {
+    await endTransaction(false);
+    throw e;
+  }
+}
+
+export async function purgeRecordsForUserSwitch(userId: number): Promise<void> {
+  await beginTransaction();
+  try {
+    await run(
+      'DELETE FROM survey_answers WHERE record_uuid IN (SELECT record_uuid FROM survey_header WHERE user_id IS NOT NULL AND user_id <> ?)',
+      [userId],
+    );
+    await run(
+      'DELETE FROM gps_logs WHERE record_uuid IN (SELECT record_uuid FROM survey_header WHERE user_id IS NOT NULL AND user_id <> ?)',
+      [userId],
+    );
+    await run(
+      'DELETE FROM attachments WHERE record_uuid IN (SELECT record_uuid FROM survey_header WHERE user_id IS NOT NULL AND user_id <> ?)',
+      [userId],
+    );
+    await run('DELETE FROM sync_queue WHERE user_id IS NOT NULL AND user_id <> ?', [userId]);
+    await run('DELETE FROM survey_header WHERE user_id IS NOT NULL AND user_id <> ?', [userId]);
     await endTransaction(true);
   } catch (e) {
     await endTransaction(false);
@@ -556,25 +616,36 @@ export interface QueueItem {
 }
 
 export async function enqueueSync(recordUuid: string, action: 'upsert' | 'upload_attachment', payload: unknown): Promise<void> {
+  const owner = await getUser();
+  const ownerId = owner?.id ?? null;
   await run(
-    `INSERT INTO sync_queue (record_uuid, action, payload_json, status, retry_count, created_at)
-     VALUES (?, ?, ?, 'pending', 0, ?)`,
-    [recordUuid, action, JSON.stringify(payload), new Date().toISOString()],
+    `INSERT INTO sync_queue (user_id, record_uuid, action, payload_json, status, retry_count, created_at)
+     VALUES (?, ?, ?, ?, 'pending', 0, ?)`,
+    [ownerId, recordUuid, action, JSON.stringify(payload), new Date().toISOString()],
   );
 }
 
 export async function getPendingQueue(): Promise<QueueItem[]> {
+  const uid = await currentUserId();
+  if (uid === null) {
+    return [];
+  }
   return query<QueueItem>(
     `SELECT * FROM sync_queue
-     WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?)
+     WHERE user_id = ? AND status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?)
      ORDER BY id`,
-    [new Date().toISOString()],
+    [uid, new Date().toISOString()],
   );
 }
 
 export async function getQueueStats(): Promise<{ pending: number; synced: number; failed: number }> {
+  const uid = await currentUserId();
+  if (uid === null) {
+    return { pending: 0, synced: 0, failed: 0 };
+  }
   const rows = await query<{ status: string; c: number }>(
-    "SELECT status, COUNT(*) AS c FROM sync_queue GROUP BY status",
+    "SELECT status, COUNT(*) AS c FROM sync_queue WHERE user_id = ? GROUP BY status",
+    [uid],
   );
   const stats = { pending: 0, synced: 0, failed: 0 };
   for (const r of rows) {
@@ -586,7 +657,14 @@ export async function getQueueStats(): Promise<{ pending: number; synced: number
 }
 
 export async function getAllQueue(): Promise<QueueItem[]> {
-  return query<QueueItem>('SELECT * FROM sync_queue ORDER BY id DESC LIMIT 200');
+  const uid = await currentUserId();
+  if (uid === null) {
+    return [];
+  }
+  return query<QueueItem>(
+    'SELECT * FROM sync_queue WHERE user_id = ? ORDER BY id DESC LIMIT 200',
+    [uid],
+  );
 }
 
 export async function setQueueStatus(id: number, status: QueueItem['status'], error?: string | null, retryAt?: string | null): Promise<void> {

@@ -58,6 +58,11 @@ tmp/
 tests/.case_form40.latest.json
 tests/.case_form40_cleanup.php
 
+# Android release signing (never commit secrets)
+mobile2/android/keystore.properties
+mobile2/android/*.keystore
+mobile2/android/*.jks
+
 # Binary / data / screenshot artifacts
 gis.zip
 mobile2/screen.png

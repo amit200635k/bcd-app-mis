@@ -1,5 +1,5 @@
 export const DB_NAME = 'bcd_survey';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /**
  * SQLite schema (v1). Mirrors the architecture doc's table set, mapped to the
@@ -82,6 +82,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE TABLE IF NOT EXISTS survey_header (
     record_uuid TEXT PRIMARY KEY,
+    user_id INTEGER,
     form_id INTEGER,
     form_version_id INTEGER,
     form_code TEXT,
@@ -130,6 +131,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE TABLE IF NOT EXISTS sync_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
     record_uuid TEXT,
     action TEXT,
     payload_json TEXT,

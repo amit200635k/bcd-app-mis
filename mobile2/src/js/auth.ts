@@ -1,7 +1,7 @@
 import { api, ENDPOINTS, ApiError } from './api/client';
 import { clearTokens, getTokens, saveTokens } from './api/session';
 import type { TokenResponse } from './api/types';
-import { clearUsers, getUser, saveUser, setSetting, getSetting, type LocalUser } from './db/repos';
+import { clearUsers, getUser, saveUser, adoptOrphanRecords, purgeRecordsForUserSwitch, setSetting, getSetting, type LocalUser } from './db/repos';
 import { getDeviceId, registerDevice } from './native/device';
 import { fetchLocationScope, downloadAll } from './download';
 import { audit } from './db/repos';
@@ -31,6 +31,7 @@ export async function login(username: string, password: string): Promise<void> {
   await saveTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
 
   const scope = await fetchLocationScope();
+  const previous = await getUser();
   await saveUser({
     id: res.user.id,
     username: res.user.username,
@@ -39,6 +40,15 @@ export async function login(username: string, password: string): Promise<void> {
     scope_json: scope ? JSON.stringify(scope) : null,
     profile_json: JSON.stringify(res.user),
   });
+
+  // Data isolation across sign-ins: when a different user logs in on this
+  // device, remove the previous user's survey data so records + sync show only
+  // the current user's entries. Legacy rows with no owner are adopted to the
+  // current user.
+  if (previous && previous.id !== res.user.id) {
+    await purgeRecordsForUserSwitch(res.user.id);
+  }
+  await adoptOrphanRecords(res.user.id);
 
   const first = await isFirstLaunch();
   await registerDevice();

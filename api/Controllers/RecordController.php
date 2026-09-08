@@ -215,6 +215,12 @@ final class RecordController
             if (!move_uploaded_file($tmp, $dest)) {
                 continue;
             }
+            // Burn survey metadata onto uploaded images (survey id, surveyor,
+            // building name, timestamp); keeps working when the device-side
+            // stamp did not run. PDFs/JSON are left untouched.
+            if (str_starts_with($mime, 'image/')) {
+                self::stampPhoto($dest, $mime, $record, $pdo);
+            }
             $size = (int) ($_FILES['files']['size'][$i] ?? 0);
             $insert->execute([
                 'rid'  => $recordId,
@@ -275,5 +281,186 @@ final class RecordController
             'by_status'    => $byStatus,
             'server_time'  => date('c'),
         ]);
+    }
+
+    /** Survey / building / surveyor etc. metadata used for the image stamp. */
+    private static function stampMeta(array $record, \PDO $pdo): array
+    {
+        $survey = (string) ($record['survey_code'] ?? '');
+        $created = (string) ($record['created_at'] ?? date('Y-m-d H:i:s'));
+
+        $stmt = $pdo->prepare(
+            "SELECT field_key, value_text, value_json FROM survey_answers
+             WHERE record_id = :rid AND field_key IN
+             ('survey_id','building_name','office_name','address','geo_address','site_address','geo_location')"
+        );
+        $stmt->execute(['rid' => $record['id']]);
+        $answers = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $answers[$row['field_key']] = $row;
+        }
+        $answerText = static function (string $key) use ($answers): string {
+            return isset($answers[$key]) && $answers[$key]['value_text'] !== null && $answers[$key]['value_text'] !== ''
+                ? (string) $answers[$key]['value_text']
+                : '';
+        };
+
+        if ($survey === '' && $answerText('survey_id') !== '') {
+            $survey = $answerText('survey_id');
+        }
+
+        $building = $answerText('building_name');
+        if ($building === '') {
+            $building = $answerText('office_name');
+        }
+
+        $address = $answerText('address');
+        if ($address === '') {
+            $address = $answerText('geo_address');
+        }
+        if ($address === '') {
+            $address = $answerText('site_address');
+        }
+
+        $lat = '';
+        $lng = '';
+        $geo = isset($answers['geo_location']) ? json_decode((string) $answers['geo_location']['value_json'], true) : null;
+        if (is_array($geo)) {
+            $lat = (string) ($geo['lat'] ?? $geo['latitude'] ?? '');
+            $lng = (string) ($geo['lng'] ?? $geo['longitude'] ?? $geo['long'] ?? $geo['lon'] ?? '');
+        }
+        $fmtCoord = static function (string $v): string {
+            if ($v === '' || !is_numeric($v)) {
+                return '—';
+            }
+            return number_format((float) $v, 5, '.', '');
+        };
+
+        $surveyor = '—';
+        $surveyorId = $record['submitted_by'] !== null ? (int) $record['submitted_by'] : (int) $record['user_id'];
+        if ($surveyorId > 0) {
+            $stmt = $pdo->prepare('SELECT full_name, username FROM users WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $surveyorId]);
+            $u = $stmt->fetch();
+            if ($u !== false) {
+                $surveyor = ($u['full_name'] !== null && $u['full_name'] !== '') ? (string) $u['full_name'] : (string) $u['username'];
+            }
+        }
+
+        return [
+            'survey'   => $survey !== '' ? $survey : '—',
+            'surveyor' => $surveyor,
+            'building' => $building !== '' ? $building : '—',
+            'address'  => $address !== '' ? $address : '—',
+            'created'  => date('d-m-Y H:i:s', strtotime($created)),
+            'geo'      => 'lat-' . $fmtCoord($lat) . ', long-' . $fmtCoord($lng),
+        ];
+    }
+
+    /** Find a usable TrueType font for GD (Windows + common Linux paths). */
+    private static function ttfFont(): ?string
+    {
+        $candidates = [
+            'C:/Windows/Fonts/arial.ttf',
+            'C:/Windows/Fonts/segoeui.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        ];
+        foreach ($candidates as $font) {
+            if (is_file($font)) {
+                return $font;
+            }
+        }
+        return null;
+    }
+
+    /** Draw a bottom-right metadata stamp on the given image file (in place). */
+    private static function stampPhoto(string $dest, string $mime, array $record, \PDO $pdo): void
+    {
+        if (!function_exists('imagecreatefrompng') && !function_exists('imagecreatefromjpeg')) {
+            return;
+        }
+        try {
+            $meta = self::stampMeta($record, $pdo);
+            $lines = [
+                'Survey ID- ' . $meta['survey'],
+                'Surveyor Name - ' . $meta['surveyor'],
+                'Created Date - ' . $meta['created'],
+                'Building Name - ' . $meta['building'],
+                'Address - ' . $meta['address'],
+                $meta['geo'],
+            ];
+
+            $img = match ($mime) {
+                'image/png'  => function_exists('imagecreatefrompng') ? @imagecreatefrompng($dest) : false,
+                'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($dest) : false,
+                default      => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($dest) : false,
+            };
+            if ($img === false) {
+                return;
+            }
+
+            $w = imagesx($img);
+            $h = imagesy($img);
+            if ($w < 120 || $h < 80) {
+                imagedestroy($img);
+                return;
+            }
+
+            $pad = max(8, (int) round($w * 0.02));
+            $font = self::ttfFont();
+
+            if ($font !== null) {
+                $fontSize = max(13, (int) round($h * 0.028));
+                $lineGap = (int) round($fontSize * 1.35);
+            } else {
+                $fontSize = 5; // GD built-in font size 5
+                $lineGap = 16;
+            }
+
+            // Band tall enough to hold all the stamp lines.
+            $bandH = max(56, (int) round(min($h * 0.28, $lineGap * count($lines) + $pad * 2)));
+
+            // Translucent dark gradient band across the bottom for legibility.
+            $steps = 12;
+            $bandTop = $h - $bandH;
+            for ($i = 0; $i < $steps; $i++) {
+                $alpha = (int) (6 + (66 * $i) / $steps);
+                $color = imagecolorallocatealpha($img, 0, 0, 0, $alpha);
+                $y0 = $bandTop + (int) (($bandH / $steps) * $i);
+                $y1 = $bandTop + (int) (($bandH / $steps) * ($i + 1)) - 1;
+                imagefilledrectangle($img, 0, $y0, $w, $y1, $color);
+            }
+            $white = imagecolorallocate($img, 255, 255, 255);
+
+            $y = $h - $pad;
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                if ($font !== null) {
+                    $box = imagettfbbox($fontSize, 0, $font, $lines[$i]);
+                    $tw = $box !== false ? max(0, $box[2] - $box[0]) : 0;
+                    $x = max(0, $w - $pad - $tw);
+                    imagettftext($img, $fontSize, 0, $x, $y, $white, $font, $lines[$i]);
+                } else {
+                    $wpx = imagefontwidth(5) * strlen($lines[$i]);
+                    $x = max(0, $w - $pad - $wpx);
+                    imagestring($img, 5, $x, max(0, $y - 14), $lines[$i], $white);
+                }
+                $y -= $lineGap;
+            }
+
+            // Write the stamped image back over the original.
+            if ($mime === 'image/png') {
+                imagepng($img, $dest, 8);
+            } elseif ($mime === 'image/webp') {
+                imagewebp($img, $dest, 80);
+            } else {
+                imagejpeg($img, $dest, 88);
+            }
+            imagedestroy($img);
+        } catch (\Throwable $e) {
+            error_log('stampPhoto failed: ' . exception_message($e));
+        }
     }
 }

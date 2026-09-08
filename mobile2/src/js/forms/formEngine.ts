@@ -842,9 +842,11 @@ export class FormEngine {
   /* persistence                                                         */
   /* ------------------------------------------------------------------ */
 
-  private headerFor(status: string): LocalRecordHeader {
+  private async headerFor(status: string): Promise<LocalRecordHeader> {
+    const user = await currentUser();
     return {
       record_uuid: this.recordUuid,
+      user_id: user?.id ?? null,
       form_id: this.formId,
       form_version_id: this.formVersionId,
       form_code: this.formCode,
@@ -871,7 +873,7 @@ export class FormEngine {
   async saveDraft(): Promise<void> {
     this.readAll();
     const answers = this.serializeAnswers();
-    await saveRecord(this.headerFor('draft'), answers, this.gpsFor(), this.attachments);
+    await saveRecord(await this.headerFor('draft'), answers, this.gpsFor(), this.attachments);
     await audit('record.saved_draft', { record_uuid: this.recordUuid, form_id: this.formId });
   }
 
@@ -882,7 +884,7 @@ export class FormEngine {
       return { ok: false, recordUuid: this.recordUuid, errors: this.errors };
     }
     await this.saveDraft(); // persists answers + attachments (status overwritten below)
-    await saveRecord(this.headerFor('submitted'), this.serializeAnswers(), this.gpsFor(), this.attachments);
+    await saveRecord(await this.headerFor('submitted'), this.serializeAnswers(), this.gpsFor(), this.attachments);
 
     const deviceId = await getDeviceId();
     await enqueueSync(this.recordUuid, 'upsert', {
