@@ -2,6 +2,7 @@ import { initDb } from './db';
 import { route, navigate, closeDrawer } from './ui/router';
 import { logout } from './auth';
 import { isConnected, onNetworkChange } from './native/network';
+import { migrateAttachmentsFromCache } from './native/media';
 import { syncNow } from './sync';
 import { SYNC } from './config';
 
@@ -43,6 +44,13 @@ void (async () => {
     await initDb();
   } catch (e) {
     console.error('database init failed', e);
+  }
+
+  try {
+    // One-time: move any attachments still in the evictable Cache dir to Data.
+    await migrateAttachmentsFromCache();
+  } catch (e) {
+    console.error('attachment migration failed', e);
   }
 
   updateOfflineBanner(await isConnected());

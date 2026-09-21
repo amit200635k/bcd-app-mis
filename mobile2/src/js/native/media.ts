@@ -12,6 +12,35 @@ export interface CapturedFile {
 }
 
 const ATTACH_DIR = 'bcd-attachments';
+const ATTACH_MIGRATED_FLAG = 'bcd_attachments_migrated_data_v1';
+
+/**
+ * One-time migration: before this fix, attachments were stored under the
+ * non-persistent Directory.Cache and the OS could evict them, leaving form
+ * previews empty. Copy any leftover files into the persistent Directory.Data
+ * location so existing drafts keep their images. Idempotent (flag + catch).
+ */
+export async function migrateAttachmentsFromCache(): Promise<void> {
+  try {
+    if (localStorage.getItem(ATTACH_MIGRATED_FLAG) || !Capacitor.isNativePlatform()) {
+      return;
+    }
+    const entries = await Filesystem.readdir({ path: ATTACH_DIR, directory: Directory.Cache }).catch(() => null);
+    if (entries) {
+      for (const e of entries.files) {
+        if (e.type !== 'file') continue;
+        const rel = `${ATTACH_DIR}/${e.name}`;
+        const read = await Filesystem.readFile({ path: rel, directory: Directory.Cache }).catch(() => null);
+        if (!read) continue;
+        await Filesystem.writeFile({ path: rel, data: read.data, directory: Directory.Data, recursive: true })
+          .catch(() => undefined);
+      }
+      await Filesystem.rmdir({ path: ATTACH_DIR, directory: Directory.Cache, recursive: true }).catch(() => undefined);
+    }
+  } finally {
+    localStorage.setItem(ATTACH_MIGRATED_FLAG, '1');
+  }
+}
 
 /* ---------------------------------------------------------------------------
  * generic helpers
@@ -36,7 +65,7 @@ export async function storeDataUrl(dataUrl: string, fileName: string): Promise<s
   await Filesystem.writeFile({
     path,
     data: dataUrl,
-    directory: Directory.Cache,
+    directory: Directory.Data,
     recursive: true,
   });
   return path;
@@ -44,7 +73,7 @@ export async function storeDataUrl(dataUrl: string, fileName: string): Promise<s
 
 /** Read a stored attachment back as a Blob (for multipart upload). */
 export async function readAttachmentBlob(uri: string, mimeType: string): Promise<Blob> {
-  const res = await Filesystem.readFile({ path: uri, directory: Directory.Cache });
+  const res = await Filesystem.readFile({ path: uri, directory: Directory.Data });
   let dataUrl: string;
   if (typeof res.data === 'string') {
     dataUrl = res.data;
@@ -121,7 +150,10 @@ async function readCameraPhoto(photo: {
     // photo.path is absolute (already includes the cache dir), so read it
     // with Directory.Cache omitted.
     const res = await Filesystem.readFile({ path: sourcePath });
-    if (typeof res.data === 'string') return res.data;
+    if (typeof res.data === 'string') {
+      const mime = photo.format === 'png' ? 'image/png' : 'image/jpeg';
+      return `data:${mime};base64,${res.data}`;
+    }
     if (res.data instanceof Blob) return blobToDataUrl(res.data);
     return `data:${photo.format === 'png' ? 'image/png' : 'image/jpeg'};base64,${arrayBufferToBase64(res.data as ArrayBuffer)}`;
   } catch {
