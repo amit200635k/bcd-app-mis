@@ -22,25 +22,14 @@ $daemon = in_array('--daemon', $flags, true);
 $service = new ReplicationService();
 
 if ($once) {
-    $processed = $service->processOne(
-        static function (array $payload, ?int $targetDbId): bool {
-            // TODO: integrate PDO/ODBC connectors for mssql/oracle/postgres.
-            fwrite(STDOUT, '  -> applying ' . json_encode($payload) . PHP_EOL);
-            return true;
-        }
-    );
+    $processed = $service->processOne();
     echo $processed ? "Job processed.\n" : "Queue empty.\n";
     exit(0);
 }
 
 echo "Replication worker started at " . date('c') . "\n";
 while (true) {
-    $processed = $service->processOne(
-        static function (array $payload, ?int $targetDbId): bool {
-            // TODO: connector integration point.
-            return true;
-        }
-    );
+    $processed = $service->processOne();
     if (!$processed && !$daemon) {
         echo "Queue empty.\n";
         break;

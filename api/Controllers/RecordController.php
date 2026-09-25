@@ -10,6 +10,7 @@ use App\Exceptions\ValidationException;
 use App\Http\Request;
 use App\Http\Response;
 use App\Services\RecordService;
+use App\Services\ReplicationService;
 use App\Support\Validator;
 
 final class RecordController
@@ -69,6 +70,24 @@ final class RecordController
                 error_log('sync_queue enqueue failed: ' . exception_message($e));
             }
 
+            // Enqueue for external database replication (first enabled target).
+            // Best-effort: replication failure must not reject the mobile sync.
+            try {
+                $pdo = Connection::instance();
+                $target = $pdo->query("SELECT id FROM external_db_configs WHERE enabled = 1 ORDER BY id LIMIT 1")->fetch();
+                if ($target) {
+                    (new ReplicationService())->enqueue('survey_record', (string) $result['record_uuid'], 'upsert', [
+                        'entity_type' => 'survey_record',
+                        'operation'   => 'upsert',
+                        'form_id'     => (int) $data['form_id'],
+                        'data'        => $data['answers'] ?? [],
+                        'record_id'   => (int) $result['record_id'],
+                    ], (int) $target['id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('replication enqueue failed: ' . exception_message($e));
+            }
+
             Response::created($result);
         } catch (ValidationException $e) {
             Response::validation($e->errors());
@@ -106,6 +125,24 @@ final class RecordController
                 Response::forbidden('You do not have access to this record.');
             }
             $svc->transition((int) $params['id'], $user->id(), $toStatus, $remark);
+
+            // Enqueue for external database replication (first enabled target).
+            try {
+                $pdo = Connection::instance();
+                $target = $pdo->query("SELECT id FROM external_db_configs WHERE enabled = 1 ORDER BY id LIMIT 1")->fetch();
+                if ($target) {
+                    (new ReplicationService())->enqueue('survey_record', (string) $record['record_uuid'], 'update', [
+                        'entity_type' => 'survey_record',
+                        'operation'   => 'update',
+                        'form_id'     => (int) $record['form_id'],
+                        'data'        => ['status' => $toStatus],
+                        'record_id'   => (int) $record['id'],
+                    ], (int) $target['id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('replication enqueue failed: ' . exception_message($e));
+            }
+
             Response::ok(['message' => 'Status updated.', 'status' => $toStatus]);
         } catch (\Throwable $e) {
             Response::error($e->getMessage(), 422);

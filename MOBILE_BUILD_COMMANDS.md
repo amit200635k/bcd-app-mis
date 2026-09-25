@@ -122,10 +122,7 @@ Output: `app\build\outputs\apk\debug\app-debug.apk`
 
 ```powershell
 cd D:\Xampp\htdocs\bcd-app\mobile2\android
-keytool -genkeypair -v -keystore bcd-survey-release.keystore -alias bcd-survey `
-  -keyalg RSA -keysize 2048 -validity 10000 `
-  -storepass <STRONG_PASSWORD> -keypass <STRONG_PASSWORD> `
-  -dname "CN=BCD Survey, OU=IT, O=Jharkhand, L=Ranchi, S=JH, C=IN"`
+keytool -genkeypair -v -keystore bcd-survey-release.keystore -alias bcd-survey ` -keyalg RSA -keysize 2048 -validity 10000 `   -storepass <STRONG_PASSWORD> -keypass <STRONG_PASSWORD> `  -dname "CN=BCD Survey, OU=IT, O=Jharkhand, L=Ranchi, S=JH, C=IN"`
 ```
 
 or point `keystore.properties` at an existing `.jks` file.

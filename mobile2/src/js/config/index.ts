@@ -1,6 +1,6 @@
 export const APP_VERSION = '0.1.0';
 
-export const APP_NAME = 'BCD Survey';
+export const APP_NAME = 'Building Survey MIS';
 
 /**
  * Backend API base URL.
@@ -14,8 +14,11 @@ export const APP_NAME = 'BCD Survey';
  * This value is the compiled-in fallback. At runtime, the app checks
  * `window.__BCD_CONFIG__.API_BASE_URL` first (set via public/custom.js).
  */
-export const API_BASE_URL =
+export const API_BASE_URLX =
   'http://localhost:81/bcd-app/api/v1';
+export const API_BASE_URL = window.__BCD_CONFIG__.API_BASE_URL ?? 'https://jswm.jharkhand.gov.in/bcdapp/api/v1';
+export const API_BASE_URL_Live =
+  'https://jswm.jharkhand.gov.in/bcdapp/api/v1';
 
 
 export const API_BASE_URL_Livex =

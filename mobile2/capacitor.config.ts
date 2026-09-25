@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.jsac_bcd_survey.app',
-  appName: 'BCD Survey',
+  appName: 'Building Survey MIS',
   webDir: 'dist',
   server: {
     cleartext: true,

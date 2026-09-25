@@ -729,6 +729,9 @@ $breadcrumb = $breadcrumb ?? [];
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.12/vfs_fonts.js"></script>
+<?php if (isset($extraScripts)): ?>
+    <?= $extraScripts ?>
+<?php endif; ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.data-table').forEach(function(table) {

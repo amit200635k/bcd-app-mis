@@ -1,0 +1,130 @@
+﻿File       : splash.png
+Resource   : drawable\splash.png
+Dimensions : 480 x 320
+Size       : 3.95 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-land-hdpi\splash.png
+Dimensions : 800 x 480
+Size       : 7.52 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-land-mdpi\splash.png
+Dimensions : 480 x 320
+Size       : 3.95 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-land-xhdpi\splash.png
+Dimensions : 1280 x 720
+Size       : 9.03 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-land-xxhdpi\splash.png
+Dimensions : 1600 x 960
+Size       : 13.66 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-land-xxxhdpi\splash.png
+Dimensions : 1920 x 1280
+Size       : 17.27 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-port-hdpi\splash.png
+Dimensions : 480 x 800
+Size       : 7.75 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-port-mdpi\splash.png
+Dimensions : 320 x 480
+Size       : 4 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-port-xhdpi\splash.png
+Dimensions : 720 x 1280
+Size       : 9.64 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-port-xxhdpi\splash.png
+Dimensions : 960 x 1600
+Size       : 13.03 KB
+----------------------------------------
+File       : splash.png
+Resource   : drawable-port-xxxhdpi\splash.png
+Dimensions : 1280 x 1920
+Size       : 17.08 KB
+----------------------------------------
+File       : ic_launcher.png
+Resource   : mipmap-hdpi\ic_launcher.png
+Dimensions : 72 x 72
+Size       : 2.72 KB
+----------------------------------------
+File       : ic_launcher_foreground.png
+Resource   : mipmap-hdpi\ic_launcher_foreground.png
+Dimensions : 162 x 162
+Size       : 3.37 KB
+----------------------------------------
+File       : ic_launcher_round.png
+Resource   : mipmap-hdpi\ic_launcher_round.png
+Dimensions : 72 x 72
+Size       : 4.24 KB
+----------------------------------------
+File       : ic_launcher.png
+Resource   : mipmap-mdpi\ic_launcher.png
+Dimensions : 48 x 48
+Size       : 1.83 KB
+----------------------------------------
+File       : ic_launcher_foreground.png
+Resource   : mipmap-mdpi\ic_launcher_foreground.png
+Dimensions : 108 x 108
+Size       : 2.06 KB
+----------------------------------------
+File       : ic_launcher_round.png
+Resource   : mipmap-mdpi\ic_launcher_round.png
+Dimensions : 48 x 48
+Size       : 2.66 KB
+----------------------------------------
+File       : ic_launcher.png
+Resource   : mipmap-xhdpi\ic_launcher.png
+Dimensions : 96 x 96
+Size       : 3.89 KB
+----------------------------------------
+File       : ic_launcher_foreground.png
+Resource   : mipmap-xhdpi\ic_launcher_foreground.png
+Dimensions : 216 x 216
+Size       : 4.92 KB
+----------------------------------------
+File       : ic_launcher_round.png
+Resource   : mipmap-xhdpi\ic_launcher_round.png
+Dimensions : 96 x 96
+Size       : 6.44 KB
+----------------------------------------
+File       : ic_launcher.png
+Resource   : mipmap-xxhdpi\ic_launcher.png
+Dimensions : 144 x 144
+Size       : 6.49 KB
+----------------------------------------
+File       : ic_launcher_foreground.png
+Resource   : mipmap-xxhdpi\ic_launcher_foreground.png
+Dimensions : 324 x 324
+Size       : 9.56 KB
+----------------------------------------
+File       : ic_launcher_round.png
+Resource   : mipmap-xxhdpi\ic_launcher_round.png
+Dimensions : 144 x 144
+Size       : 10.21 KB
+----------------------------------------
+File       : ic_launcher.png
+Resource   : mipmap-xxxhdpi\ic_launcher.png
+Dimensions : 192 x 192
+Size       : 9.22 KB
+----------------------------------------
+File       : ic_launcher_foreground.png
+Resource   : mipmap-xxxhdpi\ic_launcher_foreground.png
+Dimensions : 432 x 432
+Size       : 15.17 KB
+----------------------------------------
+File       : ic_launcher_round.png
+Resource   : mipmap-xxxhdpi\ic_launcher_round.png
+Dimensions : 192 x 192
+Size       : 15.54 KB
+----------------------------------------

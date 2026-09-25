@@ -1,4 +1,4 @@
-# BCD Survey Mobile — PowerShell Commands (Updated)
+# Building Survey MIS Mobile — PowerShell Commands (Updated)
 
 All commands for **mobile2/** (Capacitor 8 + TypeScript + Bootstrap 5 + SQLite).
 Package: `com.jsac_bcd_survey.app` · minSdk 24 / targetSdk 36 / compileSdk 37.
@@ -116,7 +116,7 @@ host-10 tcp:8080 tcp:81
 
 Expected:
 ```json
-{"success":true,"status":"ok","app":"BCD Survey Platform","env":"development","time":"...","checks":{"database":true}}
+{"success":true,"status":"ok","app":"Building Survey MIS Platform","env":"development","time":"...","checks":{"database":true}}
 ```
 
 ---

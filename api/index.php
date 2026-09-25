@@ -60,6 +60,12 @@ $router->get('/v1/sync/status', \App\Api\Controllers\RecordController::syncStatu
 // ---------- GIS ----------
 $router->get('/v1/gis/points', \App\Api\Controllers\GisController::points(...));
 
+// ---------- Dashboard Charts ----------
+$router->get('/v1/dashboard/district-wise', \App\Api\Controllers\DashboardController::districtWise(...));
+$router->get('/v1/dashboard/block-wise', \App\Api\Controllers\DashboardController::blockWise(...));
+$router->get('/v1/dashboard/panchayat-wise', \App\Api\Controllers\DashboardController::panchayatWise(...));
+$router->get('/v1/dashboard/village-wise', \App\Api\Controllers\DashboardController::villageWise(...));
+
 // ---------- Notifications & System ----------
 $router->get('/v1/notifications', \App\Api\Controllers\SystemController::notifications(...));
 $router->get('/v1/notifications/unread', \App\Api\Controllers\SystemController::unreadNotifications(...));

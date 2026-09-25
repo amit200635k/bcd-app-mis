@@ -18,10 +18,12 @@ $breadcrumb = $breadcrumb ?? [];
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title><?= e($title) ?> — BCD Survey Platform</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.1.2/css/buttons.bootstrap5.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <style>
         :root {
             --sidebar-width: 260px;
@@ -646,6 +648,9 @@ $breadcrumb = $breadcrumb ?? [];
 
         <div class="nav-section">Reports</div>
         <?php if ($user->hasPermission('reports.view')): ?>
+        <a class="nav-link <?= $page === 'data_view' ? 'active' : '' ?>" href="<?= url('mis/data_view.php') ?>">
+            <i class="bi bi-graph-up-arrow"></i><span class="nav-label">Data View</span>
+        </a>
         <a class="nav-link <?= $page === 'reports' ? 'active' : '' ?>" href="<?= url('mis/reports.php') ?>">
             <i class="bi bi-file-earmark-bar-graph"></i><span class="nav-label">Reports</span>
         </a>

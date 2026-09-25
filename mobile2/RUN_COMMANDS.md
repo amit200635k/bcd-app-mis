@@ -1,4 +1,4 @@
-# BCD Survey Mobile (mobile2) — Run & Build Commands
+# Building Survey MIS Mobile (mobile2) — Run & Build Commands
 
 Offline-first dynamic survey app: **Capacitor 8 + TypeScript + Bootstrap 5 + SQLite**.
 Package: `com.jsac_bcd_survey.app` · Android **minSdk 24 / targetSdk 36 / compileSdk 37**.

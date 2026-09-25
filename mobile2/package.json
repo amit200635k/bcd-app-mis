@@ -1,7 +1,7 @@
 {
   "name": "bcd-mobile",
   "version": "0.1.0",
-  "description": "BCD Survey — offline-first dynamic survey mobile app (Capacitor + Alpine.js + Bootstrap + SQLite)",
+  "description": "Building Survey MIS — offline-first dynamic survey mobile app (Capacitor + Alpine.js + Bootstrap + SQLite)",
   "private": true,
   "type": "module",
   "scripts": {
